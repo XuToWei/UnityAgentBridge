@@ -1,0 +1,51 @@
+roadmap: extension-manager
+created: 2026-06-24
+
+items:
+  - slug: ext-core
+    description: extension.json清单+本地扫描+卸载+最小已装列表窗口(纯本地;远程安装代码作废待清理)
+    depends_on: []
+    status: done
+    feature: 2026-06-25-ext-core
+    minimal_loop: true
+    notes: 2026-06-25重订收缩为纯本地;实现含的远程安装(InstallFromGitHub/zip下载)作废待cs-refactor清理;存活=manifest+LocalRegistry+Uninstall+窗口骨架
+
+  - slug: ext-enable-disable
+    description: 已装扩展隐藏式启停,两级粒度(扩展级meta.enabled+命令级meta.disabledCommands);禁用=从list_commands隐藏+dispatch拒调,不重编译不删码
+    depends_on: [ext-core]
+    status: done
+    feature: 2026-06-25-ext-enable-disable
+    minimal_loop: false
+    notes: 携带file-bridge禁用名单过滤改动(CommandRegistry/list_commands/dispatch+COMMAND_DISABLED);含域重载Reapply+窗口启停按钮(扩展级+逐命令)
+
+  - slug: ext-remote-index
+    description: 策展索引拉取+本地搜索过滤+从索引项安装
+    depends_on: [ext-core]
+    status: dropped
+    feature: null
+    minimal_loop: false
+    notes: 2026-06-25移除——纯本地重订,去掉一切远程获取/索引
+
+  - slug: ext-manager-ui
+    description: 扩展管理窗口打磨:概览头+状态/名称过滤+ScrollView+打开目录+未生效警示
+    depends_on: [ext-core, ext-enable-disable]
+    status: dropped
+    feature: 2026-06-25-ext-manager-ui
+    minimal_loop: false
+    notes: 2026-06-25验收前被命令管理器重订取代(superseded);impl已完成未accept;窗口由"扩展包列表"改"命令管理器",其打磨并入command-manager-window重做
+
+  - slug: command-catalog
+    description: 命令管理器完整落地:TypeCache命令目录+全局禁用名单(EditorPrefs)+domain reload Reapply+命令管理器窗口重写(按来源分组/逐命令启停/扩展卸载)
+    depends_on: [ext-core, ext-enable-disable]
+    status: done
+    feature: 2026-06-25-command-catalog
+    minimal_loop: true
+    notes: 合并了command-manager-window(实现时发现引擎切换与窗口改写耦合,删ExtensionState会断窗口、新旧禁用引擎不能共存);复用file-bridge禁用过滤+ext-core LocalRegistry/Uninstall;废弃ExtensionState meta持久化
+
+  - slug: command-manager-window
+    description: 统一命令管理器窗口(按来源分组+逐命令启停+扩展卸载)
+    depends_on: [command-catalog]
+    status: dropped
+    feature: null
+    minimal_loop: false
+    notes: 2026-06-25并入command-catalog(superseded by absorption)——引擎切换(删ExtensionState)与窗口改写耦合,无法拆分落地,合并到command-catalog一并实现

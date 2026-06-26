@@ -1,0 +1,93 @@
+feature: 2026-06-24-bridge-core
+created: 2026-06-24
+
+steps:
+  - action: "包骨架+协议类型：建 Unity/ UPM 包(package.json+Newtonsoft 依赖)+Editor asmdef+Request/Response/ErrorInfo+ErrorCodes 常量"
+    exit_signal: "Unity 识别该包,协议类型编译通过"
+    status: done
+  - action: "文件通道 M2：目录创建+原子写(tmp→rename)+TryClaimNext 认领+WriteResponse"
+    exit_signal: "手工往 requests/ 放文件被移入 processing/,构造响应能在 responses/ 出现"
+    status: done
+  - action: "handler 框架 M3：ICommandHandler+CommandAttribute+CommandException+CommandRegistry 反射注册+CommandDispatcher+PingHandler"
+    exit_signal: "Dispatch(ping 请求) 返回 status=ok+result=pong;未知命令返回 UNKNOWN_COMMAND"
+    status: done
+  - action: "Editor 宿主 M4：[InitializeOnLoad]+EditorApplication.update 轮询接通通道与分发+BridgeSettings+菜单启停+启动时 processing/ 孤儿补 INTERRUPTED"
+    exit_signal: "编辑器启动后放 ping 请求文件 → responses/ 出现 pong"
+    status: done
+  - action: "端到端+边界：UNKNOWN_COMMAND/半截文件不被读/重入只处理一次/domain reload→INTERRUPTED"
+    exit_signal: "第 3 节所有验收场景有可观察证据"
+    status: done
+
+checks:
+  - item: "协议信封符合 4.1：请求 v/id/command/params/timestamp;响应 v/id/status/result/error/timestamp"
+    source: 名词契约
+    status: passed
+  - item: "ICommandHandler(Command/Execute(JObject))+CommandAttribute+CommandException(Code) 签名与 roadmap 4.3 一致"
+    source: 名词契约
+    status: passed
+  - item: "CommandDispatcher.Dispatch(Request)→Response 永不抛,内部异常转 error 响应"
+    source: 流程级约束
+    status: passed
+  - item: "写方 tmp→rename 原子写;读方只认最终名,不读半截文件"
+    source: 流程级约束
+    status: passed
+  - item: "认领靠 requests→processing 原子 rename,轮询重入只处理一次"
+    source: 流程级约束
+    status: passed
+  - item: "handler 在 EditorApplication.update 回调内同步执行,保证主线程"
+    source: 流程级约束
+    status: passed
+  - item: "domain reload 中断:启动扫 processing/ 孤儿补 INTERRUPTED,at-most-once 不重试"
+    source: 流程级约束
+    status: passed
+  - item: "命令名重复拒绝注册并记错误日志"
+    source: 流程级约束
+    status: passed
+  - item: "挂载点:[InitializeOnLoad] 入口"
+    source: 挂载点
+    status: passed
+  - item: "挂载点:EditorApplication.update 订阅"
+    source: 挂载点
+    status: passed
+  - item: "挂载点:CommandRegistry [Command] 反射自动注册扫描点"
+    source: 挂载点
+    status: passed
+  - item: "挂载点:Tools/AgentBridge/Start|Stop 菜单"
+    source: 挂载点
+    status: passed
+  - item: "挂载点:BridgeSettings EditorPrefs(PollIntervalMs/RootDir)"
+    source: 挂载点
+    status: passed
+  - item: "范围守护:代码无 HttpListener/TcpListener/Socket/UnityWebRequest"
+    source: 范围守护
+    status: passed
+  - item: "范围守护:注册命令仅 ping 一个"
+    source: 范围守护
+    status: passed
+  - item: "范围守护:asmdef includePlatforms 仅 Editor"
+    source: 范围守护
+    status: passed
+  - item: "范围守护:bridge-core 不引用仓库 Features/ 目录"
+    source: 范围守护
+    status: passed
+  - item: "验收:正常 ping 往返 status=ok+result.message=pong+id 回显"
+    source: 验收场景
+    status: passed
+  - item: "验收:未知命令 status=error+code=UNKNOWN_COMMAND"
+    source: 验收场景
+    status: passed
+  - item: "验收:handler 抛非 CommandException → code=HANDLER_EXCEPTION+堆栈摘要"
+    source: 验收场景
+    status: passed
+  - item: "验收:半截 .tmp 文件不产生响应,rename 后才处理"
+    source: 验收场景
+    status: passed
+  - item: "验收:同一请求只产生一份响应,processing/ 不残留"
+    source: 验收场景
+    status: passed
+  - item: "验收:domain reload 中断后该 id 收到 INTERRUPTED,不重复执行"
+    source: 验收场景
+    status: passed
+  - item: "验收:RootDir/PollIntervalMs 配置生效"
+    source: 验收场景
+    status: passed

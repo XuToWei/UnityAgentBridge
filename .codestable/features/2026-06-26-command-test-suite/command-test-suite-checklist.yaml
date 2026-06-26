@@ -1,0 +1,99 @@
+feature: 2026-06-26-command-test-suite
+created: 2026-06-26
+
+steps:
+  - action: "脚手架:Unity/Tests/Editor/ + AgentBridge.Editor.Tests.asmdef(Editor-only,引用 AgentBridge.Editor+UnityEngine/UnityEditor.TestRunner+nunit,defineConstraints UNITY_INCLUDE_TESTS)+ BridgeTestBase(临时场景/资产/root + host 重指向 + WaitForResponse 协程 + setup-teardown 清理)+ __TestCommands(__test_echo)"
+    exit_signal: "一个 sanity [Test](Dispatch ping→pong)结构成立、可被 Test Runner 发现;Unity/Editor/ 无生产改动"
+    status: done
+  - action: "AI↔Unity 往返(RoundTripTests,真实 update):[SetUp]设临时root+Poll=0+Host.Stop/Start;[UnityTest]写 request 文件→yield WaitForResponse→读 response 断言;覆盖 ok/坏JSON(INTERNAL_ERROR)/未知命令(UNKNOWN_COMMAND)/单次认领/孤儿INTERRUPTED(预置processing→ReclaimOrphans)/原子写;[TearDown]还原host"
+    exit_signal: "往返响应文件 status/result/error.code/commandsVersion 正确;真实 update→Tick 路径跑通;TearDown 还原 host 回真实 root"
+    status: done
+  - action: "file-bridge 框架(DispatchTests):注册/重复拒绝/Version 确定性+增删稳定/未知命令/缺command(INVALID_PARAMS)/handler异常(HANDLER_EXCEPTION)/CommandException→code/禁用(COMMAND_DISABLED)/list_commands 剔除禁用+version 随禁用变"
+    exit_signal: "框架各错误码与 version 行为有断言覆盖"
+    status: done
+  - action: "inspection(InspectionCommandTests):临时场景建对象→get_hierarchy(树/maxDepth/root)/get_object(path+instanceId+componentTypes+引用渲染)/get_selection(选中+空[])/list_assets(filter+无filter截断);错误 OBJECT/COMPONENT/INVALID_OBJECT_REF"
+    exit_signal: "4 只读命令正常+边界+错误有断言"
+    status: done
+  - action: "mutation(MutationCommandTests):set_property(嵌套+PROPERTY_TYPE_MISMATCH+PROPERTY_NOT_FOUND+dirty)/create_object(empty/primitive/prefab/parent+ObjectRef)/delete_object(删+重复OBJECT_NOT_FOUND)/invoke_menu(已知+未知MENU_NOT_FOUND)"
+    exit_signal: "4 写命令正常+边界+错误有断言;场景 dirty 验证"
+    status: done
+  - action: "assets(AssetCommandTests):create_asset(folder/text/SO+UNKNOWN_ASSET_TYPE)/import_asset(临时磁盘源→Assets+ASSET_SOURCE_NOT_FOUND)/move/delete(回收站+ASSET_NOT_FOUND)/refresh/路径越界INVALID_ASSET_PATH;临时资产清理"
+    exit_signal: "5 资源命令+路径守卫有断言;临时资产 TearDown 清干净"
+    status: done
+  - action: "命令管理器+共享层(CommandManagerTests/SceneInfraTests):CommandToggle(EditorPrefs往返+SetEnabled影响CommandRegistry+Reapply)/CommandCatalog(列举+来源+Enabled+归属)/LocalRegistry(扫临时扩展)/SceneObjectResolver/PropertySerializer/PropertyDeserializer;EditorPrefs复原"
+    exit_signal: "管理器+共享层有断言;动过的 EditorPrefs TearDown 复原"
+    status: done
+
+checks:
+  - item: "往返:写request文件→真实update→response文件 status=ok/result正确/commandsVersion非空(经 [UnityTest] 真实 Host)"
+    source: 验收场景
+    status: passed
+  - item: "往返边界:坏JSON→INTERNAL_ERROR;未知命令→UNKNOWN_COMMAND"
+    source: 验收场景
+    status: passed
+  - item: "往返单次认领:同一请求只产一份响应、processing/清空;不重复处理"
+    source: 验收场景
+    status: passed
+  - item: "往返孤儿:预置 processing/ 残留→Host.Start ReclaimOrphans 补 INTERRUPTED"
+    source: 验收场景
+    status: passed
+  - item: "往返原子写:response 只见最终名(无 .tmp 残留被读)"
+    source: 验收场景
+    status: passed
+  - item: "框架:未知命令/缺command/handler异常/CommandException/禁用 各自错误码正确"
+    source: 验收场景
+    status: passed
+  - item: "框架:CommandRegistry 重复命令名拒绝;Version 同集确定+增删变化;list_commands 剔除禁用+version 随禁用变"
+    source: 验收场景
+    status: passed
+  - item: "inspection:get_hierarchy/get_object/get_selection(空[])/list_assets(截断) + 3 错误码"
+    source: 验收场景
+    status: passed
+  - item: "mutation:set_property(嵌套+dirty+2错误码)/create_object(3kind+parent+ObjectRef)/delete_object(+重复)/invoke_menu(+未知)"
+    source: 验收场景
+    status: passed
+  - item: "assets:create(folder/text/SO+未知类型)/import(+source缺)/move/delete(回收站+不存在)/refresh/越界守卫"
+    source: 验收场景
+    status: passed
+  - item: "命令管理器:CommandToggle 写EditorPrefs+令IsDisabled真+Reapply;CommandCatalog.All含测试命令+IsBuiltin/Assembly/Enabled;LocalRegistry扫临时扩展归属"
+    source: 验收场景
+    status: passed
+  - item: "共享层:SceneObjectResolver(instanceId优先/path跨场景/FindType)/PropertySerializer各类型/PropertyDeserializer写值+类型不符抛错"
+    source: 验收场景
+    status: passed
+  - item: "隔离:整套跑两遍结果一致;跑完无临时资产/场景残留、EditorPrefs/host 未被污染"
+    source: 验收场景
+    status: passed
+  - item: "命令经 CommandDispatcher.Dispatch 测(Request→Response);框架/管理器/共享层直测API"
+    source: 名词契约
+    status: passed
+  - item: "BridgeTestBase 提供临时场景/资产/root + WaitForResponse 协程 + setup-teardown 清理"
+    source: 名词契约
+    status: passed
+  - item: "测试用命令 __test_echo 在测试程序集(注册/目录/启停测试不污染真命令)"
+    source: 名词契约
+    status: passed
+  - item: "往返用真实 update(Poll=0免节流+WaitForResponse超时);host 全局态 TearDown 复原"
+    source: 流程级约束
+    status: passed
+  - item: "测试隔离可重入:每测自建自清;顺序无关;CommandToggle/EditorPrefs 测试复原原值"
+    source: 流程级约束
+    status: passed
+  - item: "挂载点:AgentBridge.Editor.Tests.asmdef"
+    source: 挂载点
+    status: passed
+  - item: "挂载点:BridgeTestBase + __TestCommands"
+    source: 挂载点
+    status: passed
+  - item: "挂载点:各域 *Tests.cs(含 RoundTripTests)"
+    source: 挂载点
+    status: passed
+  - item: "范围守护:零生产改动(diff 全在 Unity/Tests/;Unity/Editor/ 无改动)"
+    source: 范围守护
+    status: passed
+  - item: "范围守护:Editor-only 测试程序集(无 PlayMode asmdef);不引第三方测试库"
+    source: 范围守护
+    status: passed
+  - item: "范围守护:测试暴露的生产 bug 记 issue 不在本 feature 改"
+    source: 范围守护
+    status: passed

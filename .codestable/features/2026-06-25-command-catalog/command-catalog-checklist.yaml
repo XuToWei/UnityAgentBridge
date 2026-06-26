@@ -1,0 +1,78 @@
+feature: 2026-06-25-command-catalog
+created: 2026-06-25
+
+steps:
+  - action: "全局禁用名单+启停:CommandToggle(读写 EditorPrefs 工程标识 key + SetEnabled + Reapply→CommandRegistry.SetDisabledCommands);[InitializeOnLoad] 指向 CommandToggle.Reapply;删 ExtensionState.cs(per-ext meta 启停)+ 改/替 ExtensionStateBootstrap"
+    exit_signal: "SetEnabled 写 EditorPrefs 并经 file-bridge 生效;Reapply 从 EditorPrefs 重建;ExtensionState 已删无残留引用"
+    status: done
+  - action: "命令目录:CommandEntry(Name/Description/Assembly/IsBuiltin/ExtensionId/Enabled)+ CommandCatalog.All(TypeCache.GetTypesDerivedFrom<ICommandHandler> 列举 + [Command] 名/描述 + Type.Assembly 来源 + LocalRegistry 归属 + 交叉禁用名单)"
+    exit_signal: "All() 返回所有命令(内置+扩展)含禁用项;Enabled/ExtensionId/IsBuiltin 正确"
+    status: done
+  - action: "重写命令管理器窗口(合并 command-manager-window):ExtensionManagerWindow 改为 CommandCatalog.All() 按来源(内置/各扩展/其它)分组 + 逐命令 CommandToggle 启停 + 扩展项 ExtensionInstaller.Uninstall;并入概览头/状态过滤/ScrollView;不再引用 ExtensionState/ext.Enabled"
+    exit_signal: "窗口列所有命令按来源分组、逐命令启停经 file-bridge 生效、扩展项可卸载;无 ExtensionState/ext.Enabled 引用"
+    status: done
+  - action: "清理 ext-enable-disable 作废启停字段:InstalledMeta/InstalledExtension 去 enabled/disabledCommands;LocalRegistry 归属只留 id+commands;确认无引用残留(InstalledMeta 文件本身留模型,后续单独 cs-refactor)"
+    exit_signal: "grep 启停路径无 meta.enabled/disabledCommands 读写;编译无残留引用"
+    status: done
+
+checks:
+  - item: "目录列全:CommandCatalog.All() 返回所有命令(内置15+扩展),含已禁用的;Name/Description/Assembly/IsBuiltin 正确"
+    source: 验收场景
+    status: passed
+  - item: "来源区分:内置 IsBuiltin=true/Assembly=AgentBridge.Editor/ExtensionId=null;扩展 IsBuiltin=false+ExtensionId(命令∈manifest.commands)"
+    source: 验收场景
+    status: passed
+  - item: "禁用生效:SetEnabled(cmd,false)→EditorPrefs含→list_commands不含+commandsVersion变+dispatch COMMAND_DISABLED;All()该条Enabled=false"
+    source: 验收场景
+    status: passed
+  - item: "启用恢复:SetEnabled(cmd,true)→移出名单→命令重现可调Enabled=true"
+    source: 验收场景
+    status: passed
+  - item: "内置可禁:对内置命令(如ping)SetEnabled(false)同样生效"
+    source: 验收场景
+    status: passed
+  - item: "持久+重应用:禁用后domain reload→Reapply从EditorPrefs重建→仍禁用"
+    source: 验收场景
+    status: passed
+  - item: "旧模型退场:ExtensionState已删;启停不读写meta.enabled/disabledCommands;窗口不引用ExtensionState/ext.Enabled"
+    source: 验收场景
+    status: passed
+  - item: "窗口=命令浏览器:按来源(内置/各扩展/其它)分组列CommandCatalog.All();逐命令Enable/Disable经CommandToggle;扩展项Uninstall删目录"
+    source: 验收场景
+    status: passed
+  - item: "内置也在窗口:内置命令(如ping)出现在'内置'组,可在窗口禁用/启用"
+    source: 验收场景
+    status: passed
+  - item: "CommandCatalog用TypeCache(非CommandRegistry.GetAll可见集),目录含禁用命令"
+    source: 名词契约
+    status: passed
+  - item: "CommandEntry字段=Name/Description/Assembly/IsBuiltin/ExtensionId/Enabled;不含schema"
+    source: 名词契约
+    status: passed
+  - item: "CommandToggle.SetEnabled/Reapply操作EditorPrefs(工程标识key避免跨工程串)"
+    source: 名词契约
+    status: passed
+  - item: "单一真相源:启停态=全局EditorPrefs名单;Enabled派生;Reapply幂等"
+    source: 流程级约束
+    status: passed
+  - item: "复用不改file-bridge:仅调SetDisabledCommands;CommandRegistry/CommandDispatcher/ErrorCodes无改动"
+    source: 流程级约束
+    status: passed
+  - item: "扩展归属复用LocalRegistry(命令∈manifest.commands→ExtensionId);无asmdef的loose扩展ExtensionId=null"
+    source: 流程级约束
+    status: passed
+  - item: "域重载:[InitializeOnLoad]→CommandToggle.Reapply"
+    source: 挂载点
+    status: passed
+  - item: "挂载点:CommandCatalog API + CommandToggle API+存储"
+    source: 挂载点
+    status: passed
+  - item: "范围守护:改动仅限 Extensions/(含窗口重写,合并 command-manager-window);未碰 inspection/mutation/assets/file-bridge 过滤"
+    source: 范围守护
+    status: passed
+  - item: "范围守护:不改file-bridge过滤(CommandRegistry/CommandDispatcher/ErrorCodes无diff)"
+    source: 范围守护
+    status: passed
+  - item: "范围守护:启停不依赖per-ext meta(ExtensionState文件已删)"
+    source: 范围守护
+    status: passed

@@ -1,0 +1,84 @@
+feature: 2026-06-25-cmd-inspection
+created: 2026-06-25
+
+steps:
+  - action: "共享对象引用：ObjectRef/ComponentRef DTO + SceneObjectResolver(instanceId 优先/path 跨场景)+ 错误码 OBJECT_NOT_FOUND/COMPONENT_NOT_FOUND/INVALID_OBJECT_REF"
+    exit_signal: "手测 resolve 已知对象成功、不存在抛 OBJECT_NOT_FOUND"
+    status: done
+  - action: "get_selection + get_hierarchy：Selection→ObjectRefs;遍历已加载场景建树(可选 root/maxDepth)"
+    exit_signal: "真机调返回当前选中 / 场景树"
+    status: done
+  - action: "get_object + PropertySerializer：resolve→组件→顶层属性序列化(基本类型/引用渲染),componentTypes 过滤"
+    exit_signal: "真机调返回组件+属性"
+    status: done
+  - action: "list_assets：FindAssets(type/folder/query)→path+guid+type,无 filter 限数+truncated"
+    exit_signal: "真机调按 filter 返回资产"
+    status: done
+  - action: "自描述 + 端到端边界：4 handler 加 [Command] 描述 + ICommandSchema;list_commands 见 4 命令带 schema;边界(not found/空选中/无 filter 截断)"
+    exit_signal: "第 3 节验收场景有证据"
+    status: done
+
+checks:
+  - item: "ObjectRef/ComponentRef DTO 与 roadmap 4.5 一致;SceneObjectResolver instanceId 优先、否则 path 跨已加载场景"
+    source: 名词契约
+    status: passed
+  - item: "get_object 返回 {object, components:[{type,index,properties}]},顶层属性,引用渲染为 ObjectRef/资源路径,componentTypes 过滤"
+    source: 名词契约
+    status: passed
+  - item: "get_hierarchy 返回 scenes[].roots[] 树,节点 name/path/instanceId/active/children;root/maxDepth 可选"
+    source: 名词契约
+    status: passed
+  - item: "list_assets 返回 assets[]{path,guid,type}+count+truncated;支持 type/folder/query"
+    source: 名词契约
+    status: passed
+  - item: "只读:不置 dirty、不 Create/Save/Destroy/Instantiate"
+    source: 流程级约束
+    status: passed
+  - item: "主线程执行;ObjectRef 解析失败语义 INVALID_OBJECT_REF/OBJECT_NOT_FOUND/COMPONENT_NOT_FOUND"
+    source: 流程级约束
+    status: passed
+  - item: "有界返回:get_object 只到顶层;list_assets 无 filter 限数+truncated"
+    source: 流程级约束
+    status: passed
+  - item: "4 命令均带 [Command] 描述 + ICommandSchema(4.7)"
+    source: 流程级约束
+    status: passed
+  - item: "挂载点:get_hierarchy 命令注册"
+    source: 挂载点
+    status: passed
+  - item: "挂载点:get_object 命令注册"
+    source: 挂载点
+    status: passed
+  - item: "挂载点:get_selection 命令注册"
+    source: 挂载点
+    status: passed
+  - item: "挂载点:list_assets 命令注册"
+    source: 挂载点
+    status: passed
+  - item: "范围守护:代码无写 API(SetDirty/Undo./AssetDatabase.Create/Save/DestroyImmediate/Instantiate)"
+    source: 范围守护
+    status: passed
+  - item: "范围守护:仅注册 get_hierarchy/get_object/get_selection/list_assets 四只读命令"
+    source: 范围守护
+    status: passed
+  - item: "验收:get_hierarchy 返回所有已加载场景树,root/maxDepth 生效"
+    source: 验收场景
+    status: passed
+  - item: "验收:get_object 给 path/instanceId 返回组件+顶层属性,componentTypes 过滤生效"
+    source: 验收场景
+    status: passed
+  - item: "验收:get_selection 选中→ObjectRef 列表;空选中→[] 不报错"
+    source: 验收场景
+    status: passed
+  - item: "验收:list_assets 带 filter 返回匹配;无 filter 限数+truncated"
+    source: 验收场景
+    status: passed
+  - item: "验收:ObjectRef 不存在→OBJECT_NOT_FOUND;组件类型不在→COMPONENT_NOT_FOUND;path/id 都缺→INVALID_OBJECT_REF"
+    source: 验收场景
+    status: passed
+  - item: "验收:list_commands 显示 4 新命令各带 description+paramsSchema 非 null"
+    source: 验收场景
+    status: passed
+  - item: "验收:调用任一命令后场景未 dirty、无资产改动"
+    source: 验收场景
+    status: passed

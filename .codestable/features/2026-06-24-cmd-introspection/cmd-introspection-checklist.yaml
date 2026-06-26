@@ -1,0 +1,66 @@
+feature: 2026-06-24-cmd-introspection
+created: 2026-06-24
+
+steps:
+  - action: "自描述契约+hash：CommandAttribute 加 description;新增 ICommandSchema;CommandRegistry Rebuild 收集 CommandInfo + 算确定性 Version(hash)+ GetAll()"
+    exit_signal: "编译通过;同一命令集 Version 稳定、改命令集 Version 变"
+    status: done
+  - action: "响应盖版本：Response 加 CommandsVersion 字段;AgentBridgeHost 单点盖戳覆盖 Tick+ReclaimOrphans"
+    exit_signal: "任意命令响应里出现 commandsVersion"
+    status: done
+  - action: "list_commands handler + PingHandler 补描述：ListCommandsHandler 读 GetAll()+Version 构造 result"
+    exit_signal: "调 list_commands 返回含 ping/list_commands 的清单 + commandsVersion"
+    status: done
+  - action: "端到端+边界：描述/schema 正确;version 随命令集变;向后兼容(无描述 handler 仍列出);ping 仍正常"
+    exit_signal: "第 3 节验收场景有可观察证据"
+    status: done
+
+checks:
+  - item: "list_commands 返回 {commands:[{command,description,paramsSchema}], commandsVersion},符合 4.7"
+    source: 名词契约
+    status: passed
+  - item: "Response 新增 commandsVersion 字段([JsonProperty commandsVersion]),符合 4.1"
+    source: 名词契约
+    status: passed
+  - item: "CommandAttribute 加 description 可选参数 + Description 属性;ICommandSchema.GetParamsSchema() 可选接口,符合 4.3"
+    source: 名词契约
+    status: passed
+  - item: "CommandRegistry.Version 为确定性内容 hash(排序后命令名+描述+schema),禁用 string.GetHashCode"
+    source: 流程级约束
+    status: passed
+  - item: "commandsVersion 盖在每条响应(ok/error/INTERRUPTED),由 AgentBridgeHost 单点盖戳"
+    source: 流程级约束
+    status: passed
+  - item: "向后兼容:commandsVersion 追加字段、description 缺省 null、ICommandSchema 不实现则 paramsSchema=null;bridge-core ping 不受影响"
+    source: 流程级约束
+    status: passed
+  - item: "list_commands 走普通 dispatch、自身出现在清单"
+    source: 流程级约束
+    status: passed
+  - item: "挂载点:list_commands 命令注册(ListCommandsHandler)"
+    source: 挂载点
+    status: passed
+  - item: "范围守护:除 list_commands 外不新增业务命令(GetAll 内置项仅 ping+list_commands)"
+    source: 范围守护
+    status: passed
+  - item: "范围守护:commandsVersion 实现不出现 GetHashCode("
+    source: 范围守护
+    status: passed
+  - item: "范围守护:代码不写 CLAUDE.md 内容(不碰 agent-protocol-doc 范围)"
+    source: 范围守护
+    status: passed
+  - item: "验收:list_commands 返回含 ping/list_commands、每条带 description、commandsVersion 非空"
+    source: 验收场景
+    status: passed
+  - item: "验收:任意命令响应顶层带 commandsVersion,值=list_commands 返回值"
+    source: 验收场景
+    status: passed
+  - item: "验收:实现 ICommandSchema 的命令 paramsSchema 非 null,未实现为 null"
+    source: 验收场景
+    status: passed
+  - item: "验收:命令集不变重启后 version 不变;增删/改描述后 version 变"
+    source: 验收场景
+    status: passed
+  - item: "验收:无 description 的 handler 仍列出不报错;bridge-core ping 仍 ok+pong"
+    source: 验收场景
+    status: passed

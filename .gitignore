@@ -1,0 +1,9 @@
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vs/
+*.user
+
+# 本仓库是 UPM 包源 + CodeStable 文档,无 Unity 工程构建产物。
+# .meta 文件需提交(UPM 包靠它保 GUID 稳定),勿忽略。

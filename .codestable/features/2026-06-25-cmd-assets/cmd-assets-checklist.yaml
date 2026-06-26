@@ -1,0 +1,96 @@
+feature: 2026-06-25-cmd-assets
+created: 2026-06-25
+
+steps:
+  - action: "资源基础设施:AssetErrorCodes(INVALID_ASSET_PATH/ASSET_SOURCE_NOT_FOUND/ASSET_NOT_FOUND/ASSET_CREATE_FAILED/ASSET_MOVE_FAILED/UNKNOWN_ASSET_TYPE)+ 写路径守卫(限 Assets/ 下)+ SO 类型名解析(ScriptableObject 子类)"
+    exit_signal: "手测越界路径抛 INVALID_ASSET_PATH、未知 SO 类型抛 UNKNOWN_ASSET_TYPE"
+    status: done
+  - action: "create_asset + delete_asset:folder(CreateFolder)/text(WriteAllText+ImportAsset)/scriptableObject(CreateInstance+CreateAsset+SaveAssets)三 kind;删除走 MoveAssetToTrash"
+    exit_signal: "真机建文件夹/文本/SO、删到回收站;无效 kind/未知类型报错"
+    status: done
+  - action: "import_asset + move_asset:外部文件 File.Copy→ImportAsset(返回 path+guid+type);MoveAsset 移动/改名(非空错误串→ASSET_MOVE_FAILED)"
+    exit_signal: "真机导入外部文件、移动/改名;source 缺→ASSET_SOURCE_NOT_FOUND、移动失败→ASSET_MOVE_FAILED"
+    status: done
+  - action: "refresh:AssetDatabase.Refresh"
+    exit_signal: "真机调返回 refreshed:true"
+    status: done
+  - action: "自描述 + 端到端边界:5 handler 加 [Command] 描述 + ICommandSchema;list_commands 见 5 命令带 schema;边界(越界路径/source 缺/未知类型/移动失败/删不存在)"
+    exit_signal: "第 3 节验收场景有证据"
+    status: done
+
+checks:
+  - item: "import_asset:外部文件→复制进 Assets/+导入,返回 path+guid+type;source 缺→ASSET_SOURCE_NOT_FOUND;destination 越界→INVALID_ASSET_PATH"
+    source: 验收场景
+    status: passed
+  - item: "create_asset folder:kind=folder+path → 文件夹建出"
+    source: 验收场景
+    status: passed
+  - item: "create_asset text:kind=text+path+content → 文本/源码文件写出+导入,返回 path+guid"
+    source: 验收场景
+    status: passed
+  - item: "create_asset SO:kind=scriptableObject+type+path → SO 资产创建;未知类型→UNKNOWN_ASSET_TYPE"
+    source: 验收场景
+    status: passed
+  - item: "move_asset:from→to 移动/改名成功;非法目标→ASSET_MOVE_FAILED"
+    source: 验收场景
+    status: passed
+  - item: "delete_asset:path→移入回收站(deleted:true);不存在→ASSET_NOT_FOUND"
+    source: 验收场景
+    status: passed
+  - item: "refresh:→refreshed:true"
+    source: 验收场景
+    status: passed
+  - item: "写路径守卫:任一写命令目标在 Assets/ 外(C:/x 或 Packages/...)→INVALID_ASSET_PATH"
+    source: 验收场景
+    status: passed
+  - item: "list_commands 显示 5 新命令各带 description+paramsSchema 非 null"
+    source: 验收场景
+    status: passed
+  - item: "持久化语义:资产操作即时落盘(调用后立即可见,无需额外 save),与场景 mutation 的 dirty-only 区分"
+    source: 验收场景
+    status: passed
+  - item: "import_asset 接口 {source,destination};create_asset 接口 {kind,path,content?,type?};move {from,to};delete {path};refresh {} 与 design 2.1 一致"
+    source: 名词契约
+    status: passed
+  - item: "AssetErrorCodes 域内私有放 Commands/Assets/;不进 Editor/Scene/"
+    source: 名词契约
+    status: passed
+  - item: "SO 类型名解析限 ScriptableObject 子类(自带最小解析,未改 SceneObjectResolver.FindType)"
+    source: 名词契约
+    status: passed
+  - item: "即时持久化:AssetDatabase 写直接落盘(非 dirty-only);create SO 后 SaveAssets"
+    source: 流程级约束
+    status: passed
+  - item: "不可 Ctrl-Z:资产操作不进撤销栈;delete 走回收站作为恢复手段"
+    source: 流程级约束
+    status: passed
+  - item: "主线程执行;幂等:refresh 幂等,move/delete 二次→ASSET_MOVE_FAILED/ASSET_NOT_FOUND"
+    source: 流程级约束
+    status: passed
+  - item: "挂载点:import_asset 命令注册"
+    source: 挂载点
+    status: passed
+  - item: "挂载点:create_asset 命令注册"
+    source: 挂载点
+    status: passed
+  - item: "挂载点:move_asset 命令注册"
+    source: 挂载点
+    status: passed
+  - item: "挂载点:delete_asset 命令注册"
+    source: 挂载点
+    status: passed
+  - item: "挂载点:refresh 命令注册"
+    source: 挂载点
+    status: passed
+  - item: "范围守护:assets handler 不碰场景/组件(无 SceneObjectResolver/SetDirty/MarkSceneDirty/Undo)"
+    source: 范围守护
+    status: passed
+  - item: "范围守护:写路径限 Assets/ 下(每个写命令前有守卫调用)"
+    source: 范围守护
+    status: passed
+  - item: "范围守护:delete_asset 用 MoveAssetToTrash 而非 DeleteAsset(grep 无 AssetDatabase.DeleteAsset)"
+    source: 范围守护
+    status: passed
+  - item: "范围守护:仅注册 import/create/move/delete_asset + refresh 五命令"
+    source: 范围守护
+    status: passed

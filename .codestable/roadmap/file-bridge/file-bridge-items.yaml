@@ -1,0 +1,59 @@
+roadmap: file-bridge
+created: 2026-06-24
+
+items:
+  - slug: bridge-core
+    description: 协议模型+文件通道+Editor宿主+handler框架+ping,打通端到端骨架
+    depends_on: []
+    status: done
+    feature: 2026-06-24-bridge-core
+    minimal_loop: true
+    notes: 粒度偏大但为最窄可演示闭环,缺任一块都跑不通
+
+  - slug: cmd-introspection
+    description: list_commands元命令+commandsVersion(注册表hash盖每条响应)+handler自描述([Command]描述+可选ICommandSchema)
+    depends_on: [bridge-core]
+    status: done
+    feature: 2026-06-24-cmd-introspection
+    minimal_loop: false
+    notes: 落地decision command-discovery-mechanism;追加修改bridge-core的Response/CommandAttribute/CommandRegistry,均向后兼容
+
+  - slug: agent-protocol-doc
+    description: Agent侧协议约定文档+可选send-request辅助脚本+4.7发现机制元知识落地CLAUDE.md
+    depends_on: [bridge-core, cmd-introspection]
+    status: done
+    feature: 2026-06-25-agent-protocol-doc
+    minimal_loop: false
+    notes: null
+
+  - slug: cmd-inspection
+    description: 只读查询handler:get_hierarchy/get_object/get_selection/list_assets
+    depends_on: [bridge-core, cmd-introspection]
+    status: done
+    feature: 2026-06-25-cmd-inspection
+    minimal_loop: false
+    notes: 确立4.5对象引用方案的实际用法;需自描述契约带描述/schema
+
+  - slug: cmd-mutation
+    description: 写操作handler:set_property/invoke_menu/create_object/delete_object
+    depends_on: [bridge-core, cmd-inspection]
+    status: done
+    feature: 2026-06-25-cmd-mutation
+    minimal_loop: false
+    notes: 经cmd-inspection传递依赖cmd-introspection
+
+  - slug: cmd-assets
+    description: 资源操作handler:import/create/move/delete_asset+refresh
+    depends_on: [bridge-core, cmd-introspection]
+    status: done
+    feature: 2026-06-25-cmd-assets
+    minimal_loop: false
+    notes: null
+
+  - slug: cmd-csharp
+    description: execute_csharp逃生舱,运行时编译并执行C#片段返回结果
+    depends_on: [bridge-core, cmd-introspection]
+    status: dropped
+    feature: null
+    minimal_loop: false
+    notes: 2026-06-25移除——任意代码执行安全面过大(无沙箱)、Roslyn在本Unity版本可行性不确定、收益不抵风险;免重编译扩展诉求改由extension-manager的handler安装路径承接

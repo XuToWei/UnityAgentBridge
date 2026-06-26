@@ -1,0 +1,63 @@
+feature: 2026-06-25-ext-manager-ui
+created: 2026-06-25
+
+steps:
+  - action: "概览头 + 工具栏过滤:加 _statusFilter(All/Enabled/Disabled)/_nameFilter + Filtered() 私有方法;OnGUI 顶部渲染计数(扩展/启用/禁用/命令)+ 状态切换 + 名称搜索框;列表改 foreach Filtered()"
+    exit_signal: "窗口顶部出计数;切状态/输入名称列表实时筛(状态+名称叠加)"
+    status: done
+  - action: "ScrollView + 行内打开目录 + 未生效警示:列表整体包 EditorGUILayout.BeginScrollView(_scroll);每扩展行加 Open 按钮(EditorUtility.RevealInFinder Assets/AgentBridgeExtensions/{id});Compiled=false 行加 HelpBox(Warning)"
+    exit_signal: "多扩展可滚动且概览头/工具栏不被推走;Open 打开对应目录;未生效行有醒目提示"
+    status: done
+
+checks:
+  - item: "概览头:显示 扩展N·启用E·禁用D·命令C,启停/Rescan 后实时更新"
+    source: 验收场景
+    status: pending
+  - item: "状态过滤:已禁用→仅 Enabled=false;已启用→仅 Enabled=true;全部→全列"
+    source: 验收场景
+    status: pending
+  - item: "名称过滤:输入子串→仅列 id/name 含该子串(忽略大小写);清空→全列;与状态过滤叠加"
+    source: 验收场景
+    status: pending
+  - item: "ScrollView:扩展数超窗口高度时列表可滚动,概览头/工具栏不被推走"
+    source: 验收场景
+    status: pending
+  - item: "打开目录:点 Open → 文件管理器打开 Assets/AgentBridgeExtensions/{id}"
+    source: 验收场景
+    status: pending
+  - item: "未生效警示:Compiled=false 行有 Warning 提示(源码未编译/有错);Compiled=true 无"
+    source: 验收场景
+    status: pending
+  - item: "既有功能不回归:扩展级/命令级启停、卸载、Rescan、foldout 展开 在过滤/滚动后仍正常"
+    source: 验收场景
+    status: pending
+  - item: "_statusFilter/_nameFilter/_scroll 为窗口实例态;Filtered() 按两者过滤 _installed"
+    source: 名词契约
+    status: pending
+  - item: "纯呈现:过滤只影响显示哪些行,不改 LocalRegistry.Scan/ExtensionState/ExtensionInstaller 调用语义"
+    source: 流程级约束
+    status: pending
+  - item: "未生效(Compiled)与已禁用(Enabled)正交:警示只针对 Compiled=false"
+    source: 流程级约束
+    status: pending
+  - item: "过滤态不持久:不写 meta/EditorPrefs(关窗即忘)"
+    source: 流程级约束
+    status: pending
+  - item: "挂载点:概览头+工具栏过滤+ScrollView 在 OnGUI"
+    source: 挂载点
+    status: pending
+  - item: "挂载点:行内 Open 按钮(RevealInFinder)"
+    source: 挂载点
+    status: pending
+  - item: "挂载点:行内未生效 HelpBox"
+    source: 挂载点
+    status: pending
+  - item: "范围守护:无安装入口(窗口无 InstallFromGitHub/安装控件)"
+    source: 范围守护
+    status: pending
+  - item: "范围守护:名称过滤不联网(只筛 _installed 内存列表,无 HttpClient/远程)"
+    source: 范围守护
+    status: pending
+  - item: "范围守护:仅改 ExtensionManagerWindow.cs(未动 LocalRegistry/ExtensionState/ExtensionInstaller/模型/file-bridge)"
+    source: 范围守护
+    status: pending
