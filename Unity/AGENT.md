@@ -89,7 +89,7 @@ handler 可返回自有错误码(如 `MENU_NOT_FOUND`)。
 
 ## 6. 写一个新命令
 
-写一个 `ICommandHandler` 实现类放进被编译的程序集即自动注册(无需特性)。`ICommandHandler` 含 `Command`/`Description`/`Execute`/`GetParamsSchema` 四个成员——`Command` 命令名、`Description` 描述(供 list_commands)、`GetParamsSchema()` 参数 schema(无参返回空 `{}`,`new JObject()`)。详见 `README.md` 的「扩展」一节。
+写一个 `ICommandHandler` 实现类放进被编译的程序集即自动注册(无需特性)。`ICommandHandler` 含 `Command`/`Description`/`Group`/`CanDisable`/`Execute`/`GetParamsSchema` 六个成员——`Command` 命令名(唯一)、`Description` 描述(供 list_commands)、`Group` 功能分组(管理器窗口按它分组)、`CanDisable` 能否被禁用(`false` 则锁定常开,如 ping/list_commands)、`GetParamsSchema()` 参数 schema(无参返回空 `{}`,`new JObject()`)。详见 `README.md` 的「扩展」一节。
 
 ---
 

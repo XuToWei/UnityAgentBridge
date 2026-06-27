@@ -37,6 +37,8 @@ public sealed class MyHandler : ICommandHandler
 {
     public string Command => "my_cmd";
     public string Description => "这个命令做什么";        // 供 list_commands 展示给 AI
+    public string Group => "Custom";                      // 管理器窗口里的功能分组
+    public bool CanDisable => true;                       // false = 锁定常开(协议刚需命令)
     public object Execute(JObject @params) => new { ok = true };
     public JObject GetParamsSchema() => JObject.Parse(@"{ ""type"":""object"" }"); // 必选:参数 schema,无参返回 new JObject()(空 {})
     // 抛 CommandException(code, msg) 产生自定义错误码;抛其他异常 → HANDLER_EXCEPTION。

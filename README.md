@@ -60,6 +60,8 @@ agent <── AgentBridge/responses/{id}.response.json
 | `move_asset` | Move / rename an asset within the project |
 | `delete_asset` | Delete an asset (to trash) |
 | `refresh` | `AssetDatabase.Refresh()` |
+| `recompile` | Trigger a script recompile (returns immediately; result via `get_compile_result`) |
+| `get_compile_result` | Read the last compile result (`errors[]` / `warnings[]` + counts) |
 
 Discover the live set at runtime via `list_commands` — it reflects exactly what is registered and enabled, and `commandsVersion` (a content hash) changes whenever the command set does, so an agent can cache and invalidate cheaply.
 
@@ -77,7 +79,7 @@ The host auto-starts on load. The bridge root defaults to `<project>/AgentBridge
 
 ### Command Manager
 
-`Window ▸ Agent Bridge Window` lists every command (built-in + extension) discovered via Unity `TypeCache`, grouped by source, with a top toolbar to start/stop the bridge host and toggle background (no-throttling) polling. Toggle any command on/off — a disabled command is **hidden from `list_commands`** and returns `COMMAND_DISABLED` on dispatch (the disable list is persisted in `EditorPrefs`, namespaced per project).
+`Window ▸ Agent Bridge Window` lists every command (built-in + extension) discovered via Unity `TypeCache`, grouped by **function** (`ICommandHandler.Group`), with click-to-sort headers, per-group filter, and bulk enable/disable. A top toolbar starts/stops the bridge host and toggles background (no-throttling) polling. Toggle any command on/off — a disabled command is **hidden from `list_commands`** and returns `COMMAND_DISABLED` on dispatch (the disable list is persisted in `EditorPrefs`, namespaced per project). Essential commands (`CanDisable == false`, e.g. `ping` / `list_commands`) are locked on.
 
 ### Add your own command
 
@@ -89,12 +91,14 @@ public sealed class SayHelloHandler : ICommandHandler
 {
     public string Command => "say_hello";
     public string Description => "returns a greeting";
+    public string Group => "Custom";        // function group shown in the window
+    public bool CanDisable => true;          // false = locked on (protocol-essential)
     public object Execute(JObject @params) => new { greeting = "hi " + @params?["name"]?.Value<string>() };
     public JObject GetParamsSchema() => new JObject(); // {} when no params
 }
 ```
 
-`ICommandHandler` implementations are auto-registered via reflection / `TypeCache` — no manual wiring, no attribute. Throw `CommandException(code, message)` to return a typed error.
+`ICommandHandler` implementations are auto-registered via reflection / `TypeCache` — no manual wiring, no attribute. Members: `Command` (unique name), `Description`, `Group` (window grouping), `CanDisable` (false locks it on), `Execute`, `GetParamsSchema`. Throw `CommandException(code, message)` to return a typed error.
 
 ### Testing
 
@@ -156,6 +160,8 @@ agent <── AgentBridge/responses/{id}.response.json
 | `move_asset` | 工程内移动/重命名资产 |
 | `delete_asset` | 删除资产(进回收站) |
 | `refresh` | `AssetDatabase.Refresh()` |
+| `recompile` | 触发脚本重编译(立即返回,结果经 `get_compile_result` 读) |
+| `get_compile_result` | 读最近一次编译结果(`errors[]` / `warnings[]` + 计数) |
 
 运行时用 `list_commands` 取实时命令集——它精确反映已注册且启用的命令;`commandsVersion`(内容 hash)在命令集变化时改变,Agent 可据此缓存与失效。
 
@@ -173,7 +179,7 @@ agent <── AgentBridge/responses/{id}.response.json
 
 ### 命令管理器
 
-`Window ▸ Agent Bridge Window` 用 Unity `TypeCache` 列出所有命令(内置 + 扩展),按来源分组,顶部工具条可启停桥接主机、切换失焦不节流。任意命令可启停——被禁用的命令**从 `list_commands` 隐藏**、分发时返回 `COMMAND_DISABLED`(禁用名单存 `EditorPrefs`,按工程命名空间隔离)。
+`Window ▸ Agent Bridge Window` 用 Unity `TypeCache` 列出所有命令(内置 + 扩展),按**功能分组**(`ICommandHandler.Group`),表头点击排序、分组筛选、批量启停;顶部工具条启停桥接主机、切换后台运行。任意命令可打勾启停——被禁用的命令**从 `list_commands` 隐藏**、分发时返回 `COMMAND_DISABLED`(禁用名单存 `EditorPrefs`,按工程命名空间隔离)。必须命令(`CanDisable == false`,如 `ping` / `list_commands`)锁定为常开。
 
 ### 添加自定义命令
 
@@ -185,12 +191,14 @@ public sealed class SayHelloHandler : ICommandHandler
 {
     public string Command => "say_hello";
     public string Description => "returns a greeting";
+    public string Group => "Custom";        // 窗口里的功能分组
+    public bool CanDisable => true;          // false = 锁定常开(协议刚需命令)
     public object Execute(JObject @params) => new { greeting = "hi " + @params?["name"]?.Value<string>() };
     public JObject GetParamsSchema() => new JObject(); // 无参返回空 {}
 }
 ```
 
-`ICommandHandler` 实现经反射 / `TypeCache` 自动注册,无需手动接线、无需特性。抛 `CommandException(code, message)` 返回带类型的错误。
+`ICommandHandler` 实现经反射 / `TypeCache` 自动注册,无需手动接线、无需特性。成员:`Command`(唯一名)、`Description`、`Group`(窗口分组)、`CanDisable`(false 则锁定常开)、`Execute`、`GetParamsSchema`。抛 `CommandException(code, message)` 返回带类型的错误。
 
 ### 测试
 
