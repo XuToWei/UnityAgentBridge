@@ -12,6 +12,8 @@ namespace AgentBridge
     {
         public string Command => "get_compile_result";
         public string Description => "读最近一次编译结果:compiling/compiledAt/errorCount/warningCount/errors[]/warnings[]";
+        public string Group => "Compilation";
+        public bool CanDisable => true;
 
         public object Execute(JObject @params)
         {

@@ -11,6 +11,8 @@ namespace AgentBridge
     {
         public string Command => "list_commands";
         public string Description => "列出所有可用命令及其描述/参数 schema";
+        public string Group => "Meta";
+        public bool CanDisable => false;
 
         public object Execute(JObject @params)
         {

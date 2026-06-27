@@ -14,6 +14,8 @@ namespace AgentBridge
     {
         public string Command => "get_hierarchy";
         public string Description => "返回所有已加载场景的层级树(节点 name/path/instanceId/active/children);可选 root/maxDepth 收窄";
+        public string Group => "Inspection";
+        public bool CanDisable => true;
 
         public object Execute(JObject @params)
         {

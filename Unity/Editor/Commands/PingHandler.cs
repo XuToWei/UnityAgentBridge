@@ -11,6 +11,8 @@ namespace AgentBridge
     {
         public string Command => "ping";
         public string Description => "连通性测试,返回 pong 与 Unity 版本";
+        public string Group => "Meta";
+        public bool CanDisable => false;
 
         public object Execute(JObject @params)
         {

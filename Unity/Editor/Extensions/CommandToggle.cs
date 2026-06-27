@@ -15,18 +15,30 @@ namespace AgentBridge
         // EditorPrefs 是按 Unity 安装共享的 → key 带 dataPath 区分工程。
         private static string PrefKey => "AgentBridge.DisabledCommands." + Application.dataPath;
 
-        /// <summary>当前被禁用的命令名(只读)。</summary>
-        public static IReadOnlyCollection<string> Disabled()
+        /// <summary>某命令是否不可禁用(由 handler.CanDisable 声明,经 CommandRegistry 汇总)。</summary>
+        public static bool IsEssential(string command)
         {
-            return Read();
+            return !CommandRegistry.CanDisable(command);
         }
 
-        /// <summary>启停一条命令(内置或扩展均可)。</summary>
+        /// <summary>当前被禁用的命令名(只读)。不可禁用命令永不计入(即使 EditorPrefs 里有也忽略)。</summary>
+        public static IReadOnlyCollection<string> Disabled()
+        {
+            var set = Read();
+            set.RemoveWhere(c => !CommandRegistry.CanDisable(c));
+            return set;
+        }
+
+        /// <summary>启停一条命令(内置或扩展均可)。不可禁用命令拒绝禁用。</summary>
         public static void SetEnabled(string command, bool enabled)
         {
             if (string.IsNullOrEmpty(command))
             {
                 return;
+            }
+            if (!enabled && !CommandRegistry.CanDisable(command))
+            {
+                return; // 不可禁用命令
             }
             var set = Read();
             if (enabled)
@@ -44,7 +56,7 @@ namespace AgentBridge
         /// <summary>从 EditorPrefs 重建禁用名单并推给 file-bridge。domain reload 后调用。</summary>
         public static void Reapply()
         {
-            CommandRegistry.SetDisabledCommands(Read());
+            CommandRegistry.SetDisabledCommands(Disabled());
         }
 
         private static HashSet<string> Read()

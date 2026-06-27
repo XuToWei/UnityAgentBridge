@@ -12,6 +12,8 @@ namespace AgentBridge
     {
         public string Command => "set_property";
         public string Description => "改某组件属性(component+propertyPath+value,支持嵌套路径);记录 Undo、标 dirty 不自动保存";
+        public string Group => "Mutation";
+        public bool CanDisable => true;
 
         public object Execute(JObject @params)
         {

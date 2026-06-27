@@ -12,6 +12,8 @@ namespace AgentBridge
     {
         public string Command => "recompile";
         public string Description => "触发 Unity 脚本重编译(会引发 domain reload);立即返回,编译结果经 get_compile_result 读";
+        public string Group => "Compilation";
+        public bool CanDisable => true;
 
         public object Execute(JObject @params)
         {

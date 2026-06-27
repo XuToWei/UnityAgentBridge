@@ -120,6 +120,22 @@ namespace AgentBridge
             }
         }
 
+        /// <summary>清空 responses/ 中的全部文件(会话级残留清理,由 host 每会话调一次)。</summary>
+        public void ClearResponses()
+        {
+            foreach (var file in Directory.GetFiles(ResponsesDir))
+            {
+                try
+                {
+                    File.Delete(file);
+                }
+                catch (IOException)
+                {
+                    /* 个别被占用则跳过,无害 */
+                }
+            }
+        }
+
         /// <summary>列举 processing/ 中的孤儿请求(上次会话被 domain reload 打断遗留)。</summary>
         public string[] ListOrphans()
         {

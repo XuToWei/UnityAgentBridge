@@ -12,6 +12,8 @@ namespace AgentBridge
     {
         public string Command => "delete_object";
         public string Description => "删除一个 GameObject(params.object);记录 Undo、标 dirty 不自动保存";
+        public string Group => "Mutation";
+        public bool CanDisable => true;
 
         public object Execute(JObject @params)
         {

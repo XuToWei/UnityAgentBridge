@@ -11,6 +11,8 @@ namespace AgentBridge
     {
         public string Command => "delete_asset";
         public string Description => "把资产移入系统回收站(params.path,限 Assets/ 下);可从回收站恢复";
+        public string Group => "Assets";
+        public bool CanDisable => true;
 
         public object Execute(JObject @params)
         {

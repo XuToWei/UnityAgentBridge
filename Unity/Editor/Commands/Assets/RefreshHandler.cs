@@ -8,6 +8,8 @@ namespace AgentBridge
     {
         public string Command => "refresh";
         public string Description => "触发 AssetDatabase.Refresh() 重扫工程(导入外部新增/改动文件)";
+        public string Group => "Assets";
+        public bool CanDisable => true;
 
         public object Execute(JObject @params)
         {

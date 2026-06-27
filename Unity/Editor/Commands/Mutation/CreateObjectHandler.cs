@@ -14,6 +14,8 @@ namespace AgentBridge
     {
         public string Command => "create_object";
         public string Description => "创建 GameObject(kind=empty/primitive/prefab,可选 name/parent);记录 Undo、返回新对象 ObjectRef";
+        public string Group => "Mutation";
+        public bool CanDisable => true;
 
         public object Execute(JObject @params)
         {

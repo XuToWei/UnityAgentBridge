@@ -27,6 +27,22 @@ namespace AgentBridge.Tests
         }
 
         [Test]
+        public void NonDisablableCommandsCannotBeDisabled()
+        {
+            foreach (var essential in new[] { "list_commands", "ping" })
+            {
+                Assert.IsFalse(CommandRegistry.CanDisable(essential), essential);
+                Assert.IsTrue(CommandToggle.IsEssential(essential), essential);
+
+                CommandToggle.SetEnabled(essential, false); // 应被拒绝(no-op)
+                Assert.IsFalse(CommandToggle.Disabled().Contains(essential), essential);
+                Assert.IsFalse(CommandRegistry.IsDisabled(essential), essential);
+            }
+
+            Assert.IsTrue(CommandRegistry.CanDisable("__test_echo")); // 普通命令可禁用
+        }
+
+        [Test]
         public void CommandToggle_Reapply_RebuildsFromStore()
         {
             CommandToggle.SetEnabled("__test_echo", false);
@@ -52,6 +68,8 @@ namespace AgentBridge.Tests
             Assert.IsNotNull(ping, "目录应含内置 ping");
             Assert.IsTrue(ping.IsBuiltin);
             Assert.AreEqual(CommandCatalog.BuiltinAssembly, ping.Assembly);
+            Assert.AreEqual("Meta", ping.Group); // 功能分组标签
+            Assert.IsFalse(ping.CanDisable);     // ping 不可禁用
 
             Assert.IsNotNull(echo, "目录应含测试命令");
             Assert.IsFalse(echo.IsBuiltin, "测试命令来自测试程序集,非内置");

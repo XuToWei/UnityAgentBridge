@@ -9,6 +9,8 @@ namespace AgentBridge
     {
         public string Command => "get_selection";
         public string Description => "返回编辑器当前选中的 GameObject(name/path/instanceId 列表),空选中返回 []";
+        public string Group => "Inspection";
+        public bool CanDisable => true;
 
         public object Execute(JObject @params)
         {

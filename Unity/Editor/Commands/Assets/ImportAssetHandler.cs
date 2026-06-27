@@ -13,6 +13,8 @@ namespace AgentBridge
     {
         public string Command => "import_asset";
         public string Description => "把外部磁盘文件(source)复制进工程(destination,限 Assets/ 下)并导入,返回 path+guid+type";
+        public string Group => "Assets";
+        public bool CanDisable => true;
 
         public object Execute(JObject @params)
         {

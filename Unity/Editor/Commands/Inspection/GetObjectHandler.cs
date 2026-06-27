@@ -13,6 +13,8 @@ namespace AgentBridge
     {
         public string Command => "get_object";
         public string Description => "返回某 GameObject 的组件及其顶层属性;params.object 必填,componentTypes 可选过滤";
+        public string Group => "Inspection";
+        public bool CanDisable => true;
 
         public object Execute(JObject @params)
         {

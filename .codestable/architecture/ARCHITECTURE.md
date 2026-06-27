@@ -37,7 +37,7 @@ UnityAgentBridge
 ├── M1 协议消息模型   Request/Response/ErrorInfo/ErrorCodes(纯契约)
 ├── M2 文件通道       FileChannel:目录布局、原子写(tmp→rename)、认领、写响应
 ├── M3 命令处理器框架 ICommandHandler(Command/Description)反射自动注册(实现接口即注册,无特性)+ CommandDispatcher(扩展核心)
-├── M4 Editor 宿主    AgentBridgeHost([InitializeOnLoad]+轮询)、BridgeSettings、菜单启停
+├── M4 Editor 宿主    AgentBridgeHost([InitializeOnLoad]+轮询)、BridgeSettings、AgentBridgeWindow 顶部工具条启停/失焦节流
 ├── M5 内置命令集     ping、list_commands(自省);get_*/list_assets(只读查询);set_property/invoke_menu/create_object/delete_object(场景写);import/create/move/delete_asset+refresh(资源操作);recompile/get_compile_result(编译自检)
 │                     handler 按命令域分子目录:Commands/{Inspection,Mutation,Assets,Compilation}/(decision commands-category-subdirectory);元命令(ping/list_commands)留根
 └── M6 Agent 侧约定   Unity/AGENT.md(面向 AI 的驱动协议 + 可粘贴 CLAUDE.md 片段)
@@ -58,7 +58,7 @@ Extensions/
 ├── CommandToggleBootstrap          [InitializeOnLoad] domain reload 后 Reapply 重建禁用名单
 ├── ExtensionManifest / InstalledMeta / LocalRegistry   manifest 模型 + 扫描(供命令→扩展归属与卸载;不再驱动启停)
 ├── ExtensionInstaller              Uninstall(删扩展目录 + Refresh)
-└── ExtensionManagerWindow          Tools/AgentBridge/Commands 菜单:按来源(内置/各扩展/其它)分组列所有命令 + 逐命令启停 + 扩展项卸载 + 概览/过滤/滚动
+└── AgentBridgeWindow              Window/Agent Bridge Window 菜单:顶部工具条(桥接启停 + 失焦不节流)+ 按来源(内置/各扩展/其它)分组列所有命令 + 逐命令启停 + 扩展项卸载 + 概览/过滤/滚动
 ```
 
 **命令发现 + 启停**:`CommandCatalog.All()` 用 `TypeCache` 列出所有 `ICommandHandler`(含已禁用的),按 `Type.Assembly` 区分内置(`AgentBridge.Editor`)/扩展,交叉 `LocalRegistry`(manifest.commands)归属到扩展 id。启停 = `CommandToggle.SetEnabled(命令名, bool)` 改**全局禁用名单**(EditorPrefs,覆盖内置+扩展任意命令)→ `CommandRegistry.SetDisabledCommands` → 命令从 `list_commands`/`commandsVersion` 剔除、dispatch 返 `COMMAND_DISABLED`(file-bridge 过滤复用,**不重编译不删码**)。禁用名单进程内状态,domain reload 后 `CommandToggleBootstrap` 重应用。命令注册仍归 M3(反射自动)。

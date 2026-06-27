@@ -15,6 +15,8 @@ namespace AgentBridge
 
         public string Command => "list_assets";
         public string Description => "按条件查工程资产(type/folder/query),返回 path+guid+type;无 filter 时限数";
+        public string Group => "Inspection";
+        public bool CanDisable => true;
 
         public object Execute(JObject @params)
         {

@@ -42,6 +42,8 @@ namespace AgentBridge
                 {
                     Name = name,
                     Description = handler.Description,
+                    Group = handler.Group,
+                    CanDisable = handler.CanDisable,
                     Assembly = asm,
                     IsBuiltin = asm == BuiltinAssembly,
                     ExtensionId = ownership.TryGetValue(name, out var id) ? id : null,

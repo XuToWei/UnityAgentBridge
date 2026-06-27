@@ -77,7 +77,7 @@ The host auto-starts on load. The bridge root defaults to `<project>/AgentBridge
 
 ### Command Manager
 
-`Tools ▸ AgentBridge ▸ Commands` lists every command (built-in + extension) discovered via Unity `TypeCache`, grouped by source. Toggle any command on/off — a disabled command is **hidden from `list_commands`** and returns `COMMAND_DISABLED` on dispatch (the disable list is persisted in `EditorPrefs`, namespaced per project). `Tools ▸ AgentBridge ▸ Enable Background` keeps the host polling while the Editor is unfocused.
+`Window ▸ Agent Bridge Window` lists every command (built-in + extension) discovered via Unity `TypeCache`, grouped by source, with a top toolbar to start/stop the bridge host and toggle background (no-throttling) polling. Toggle any command on/off — a disabled command is **hidden from `list_commands`** and returns `COMMAND_DISABLED` on dispatch (the disable list is persisted in `EditorPrefs`, namespaced per project).
 
 ### Add your own command
 
@@ -173,7 +173,7 @@ agent <── AgentBridge/responses/{id}.response.json
 
 ### 命令管理器
 
-`Tools ▸ AgentBridge ▸ Commands` 用 Unity `TypeCache` 列出所有命令(内置 + 扩展),按来源分组。任意命令可启停——被禁用的命令**从 `list_commands` 隐藏**、分发时返回 `COMMAND_DISABLED`(禁用名单存 `EditorPrefs`,按工程命名空间隔离)。`Tools ▸ AgentBridge ▸ Enable Background` 让编辑器失焦时主机仍轮询。
+`Window ▸ Agent Bridge Window` 用 Unity `TypeCache` 列出所有命令(内置 + 扩展),按来源分组,顶部工具条可启停桥接主机、切换失焦不节流。任意命令可启停——被禁用的命令**从 `list_commands` 隐藏**、分发时返回 `COMMAND_DISABLED`(禁用名单存 `EditorPrefs`,按工程命名空间隔离)。
 
 ### 添加自定义命令
 

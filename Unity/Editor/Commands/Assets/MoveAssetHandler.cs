@@ -11,6 +11,8 @@ namespace AgentBridge
     {
         public string Command => "move_asset";
         public string Description => "工程内移动/重命名资产(from→to,均限 Assets/ 下);失败 → ASSET_MOVE_FAILED";
+        public string Group => "Assets";
+        public bool CanDisable => true;
 
         public object Execute(JObject @params)
         {

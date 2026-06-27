@@ -27,6 +27,9 @@ namespace AgentBridge
         // 进程内状态——domain reload 后由 extension-manager Reapply 重建(对应 extension-manager 4.4/4.6)。
         private static readonly HashSet<string> s_Disabled = new HashSet<string>(StringComparer.Ordinal);
 
+        // 声明 CanDisable=false 的命令名(协议刚需,不可被禁用)。Rebuild 时由 handler 收集。
+        private static readonly HashSet<string> s_NonDisablable = new HashSet<string>(StringComparer.Ordinal);
+
         private static bool s_Built;
         private static string s_Version = "";
 
@@ -93,6 +96,16 @@ namespace AgentBridge
             return s_Disabled.Contains(command);
         }
 
+        /// <summary>某命令是否允许被禁用(由 handler.CanDisable 声明,默认允许)。</summary>
+        public static bool CanDisable(string command)
+        {
+            if (!s_Built)
+            {
+                Rebuild();
+            }
+            return !s_NonDisablable.Contains(command);
+        }
+
         // 可见 = 已注册且不在禁用名单(已排序,保持 Version 稳定)。
         private static List<CommandInfo> VisibleInfos()
         {
@@ -104,6 +117,7 @@ namespace AgentBridge
         {
             s_Handlers.Clear();
             s_Infos.Clear();
+            s_NonDisablable.Clear();
 
             foreach (var type in TypeFinder.AllTypes())
             {
@@ -136,6 +150,10 @@ namespace AgentBridge
                 }
 
                 s_Handlers[name] = handler;
+                if (!handler.CanDisable)
+                {
+                    s_NonDisablable.Add(name);
+                }
                 s_Infos.Add(new CommandInfo
                 {
                     Command = name,

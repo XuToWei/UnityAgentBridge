@@ -10,6 +10,8 @@ namespace AgentBridge.Tests
     {
         public string Command => "__test_echo";
         public string Description => "test: echo params.msg";
+        public string Group => "Test";
+        public bool CanDisable => true;
         public object Execute(JObject @params) => new { echo = @params?["msg"]?.Value<string>() ?? "" };
         public JObject GetParamsSchema() =>
             JObject.Parse(@"{""type"":""object"",""properties"":{""msg"":{""type"":""string""}}}");
@@ -20,6 +22,8 @@ namespace AgentBridge.Tests
     {
         public string Command => "__test_throw";
         public string Description => "test: throws plain exception";
+        public string Group => "Test";
+        public bool CanDisable => true;
         public object Execute(JObject @params) => throw new System.InvalidOperationException("boom");
         public JObject GetParamsSchema() => new JObject();
     }
@@ -30,6 +34,8 @@ namespace AgentBridge.Tests
         public const string Code = "__TEST_CODE";
         public string Command => "__test_cmdex";
         public string Description => "test: throws CommandException";
+        public string Group => "Test";
+        public bool CanDisable => true;
         public object Execute(JObject @params) => throw new CommandException(Code, "deliberate");
         public JObject GetParamsSchema() => new JObject();
     }

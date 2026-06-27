@@ -14,12 +14,14 @@ Agent ↔ Unity 通过**文件**通讯,无网络。根目录 `<root>` 默认 `<U
 └── responses/   Unity 写 {id}.response.json(你读)
 ```
 
-> ⚠️ Unity 编辑器**失焦时默认不轮询**。若需失焦也驱动,先在 Unity 点 `Tools/AgentBridge/Enable Background (No Throttling)`。
+> ⚠️ Unity 编辑器**失焦时默认不轮询**。若需失焦也驱动,在 Unity 开 `Window/Agent Bridge Window`、勾选顶部「失焦不节流」开关。
 
 ## 2. 发一条命令
 
-1. **原子写请求**:先写 `requests/{id}.request.json.tmp`,再 rename 成 `requests/{id}.request.json`(切勿直接写最终名——会被读到半截)。`{id}` 由你生成、保证唯一。
-2. **轮询响应**:读 `responses/{id}.response.json`,出现即为完成(Unity 也用 tmp→rename 原子写)。读完可删。
+1. **原子写请求**:先写 `requests/{id}.request.json.tmp`,再 rename 成 `requests/{id}.request.json`(切勿直接写最终名——会被读到半截)。`{id}` 由你生成、**每次唯一、绝不复用**(复用旧 id 可能读到上次残留的旧响应)。
+2. **轮询响应**:读 `responses/{id}.response.json`,出现即为完成(Unity 也用 tmp→rename 原子写)。**读完不必删——清理由 Unity 端负责。**
+
+> 清理:Unity 端**每个编辑器会话、在生成首个响应前清一次** `responses/`(清掉上次会话遗留;domain reload 不重清,避免删掉刚写出未读的响应)。本会话内响应会累积但不影响读取(你用唯一 id 即可)。
 
 **请求** `{id}.request.json`:
 ```json
@@ -102,5 +104,5 @@ handler 可返回自有错误码(如 `MENU_NOT_FOUND`)。
 - 读响应:轮询 `<root>/responses/{id}.response.json`。
 - **先调 `list_commands`** 拿可用命令并缓存(含 `commandsVersion`)。之后任意响应的 `commandsVersion` 与缓存不一致、或装/卸扩展后、或遇 `UNKNOWN_COMMAND`,就重新 `list_commands`。
 - 完整协议见 Unity 包内 `AGENT.md`。
-- (可选)失焦也要驱动时,在 Unity 点 `Tools/AgentBridge/Enable Background (No Throttling)`。
+- (可选)失焦也要驱动时,在 Unity 开 `Window/Agent Bridge Window` 勾顶部「失焦不节流」。
 ```

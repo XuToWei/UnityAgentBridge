@@ -14,6 +14,8 @@ namespace AgentBridge
     {
         public string Command => "create_asset";
         public string Description => "创建资产(kind=folder/text/scriptableObject,path 限 Assets/ 下);text 需 content、SO 需 type";
+        public string Group => "Assets";
+        public bool CanDisable => true;
 
         public object Execute(JObject @params)
         {

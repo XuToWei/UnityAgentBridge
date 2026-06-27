@@ -12,6 +12,8 @@ namespace AgentBridge
     {
         public string Command => "invoke_menu";
         public string Description => "执行编辑器菜单项(params.path),逃生舱;失败 → MENU_NOT_FOUND";
+        public string Group => "Mutation";
+        public bool CanDisable => true;
 
         public object Execute(JObject @params)
         {
