@@ -1,5 +1,6 @@
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEditor;
 
@@ -87,6 +88,131 @@ namespace AgentBridge.Tests
             finally { CommandToggle.SetEnabled("__test_echo", true); }
 
             Assert.IsTrue(CommandCatalog.All().First(e => e.Name == "__test_echo").Enabled);
+        }
+
+        [Test]
+        public void MarkdownTarget_InvalidPath_ReturnsError()
+        {
+            var method = typeof(AgentBridgeWindow).GetMethod("TryResolveMarkdownTargetPath",
+                BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.IsNotNull(method);
+
+            var args = new object[] { "\0bad.md", null, null, null };
+            var ok = (bool)method.Invoke(null, args);
+
+            Assert.IsFalse(ok);
+            Assert.IsNull(args[1]);
+            Assert.IsNull(args[2]);
+            Assert.IsFalse(string.IsNullOrEmpty((string)args[3]));
+        }
+
+        [Test]
+        public void MarkdownTarget_ProjectRootRelativePath_ResolvesBesideAssets()
+        {
+            var method = typeof(AgentBridgeWindow).GetMethod("TryResolveMarkdownTargetPath",
+                BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.IsNotNull(method);
+
+            var args = new object[] { "CLAUDE.md", null, null, null };
+            var ok = (bool)method.Invoke(null, args);
+            var fullPath = ((string)args[1]).Replace('\\', '/');
+            var projectRoot = Path.GetFullPath(Path.Combine(UnityEngine.Application.dataPath, "..")).Replace('\\', '/');
+            var expected = Path.GetFullPath(Path.Combine(projectRoot, "CLAUDE.md")).Replace('\\', '/');
+
+            Assert.IsTrue(ok);
+            Assert.AreEqual(expected, fullPath);
+            Assert.AreEqual("CLAUDE.md", args[2]);
+            Assert.IsNull(args[3]);
+        }
+
+        [Test]
+        public void MarkdownTarget_ParentRelativePath_ResolvesAboveProjectRoot()
+        {
+            var method = typeof(AgentBridgeWindow).GetMethod("TryResolveMarkdownTargetPath",
+                BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.IsNotNull(method);
+
+            var args = new object[] { "../AGENTS.md", null, null, null };
+            var ok = (bool)method.Invoke(null, args);
+            var fullPath = ((string)args[1]).Replace('\\', '/');
+            var projectRoot = Path.GetFullPath(Path.Combine(UnityEngine.Application.dataPath, "..")).Replace('\\', '/');
+            var expected = Path.GetFullPath(Path.Combine(projectRoot, "..", "AGENTS.md")).Replace('\\', '/');
+
+            Assert.IsTrue(ok);
+            Assert.AreEqual(expected, fullPath);
+            Assert.AreEqual("../AGENTS.md", args[2]);
+            Assert.IsNull(args[3]);
+        }
+
+        [Test]
+        public void MarkdownTarget_OtherMarkdownName_ReturnsError()
+        {
+            var method = typeof(AgentBridgeWindow).GetMethod("TryResolveMarkdownTargetPath",
+                BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.IsNotNull(method);
+
+            var args = new object[] { "README.md", null, null, null };
+            var ok = (bool)method.Invoke(null, args);
+
+            Assert.IsFalse(ok);
+            Assert.IsNull(args[1]);
+            Assert.IsNull(args[2]);
+            Assert.IsFalse(string.IsNullOrEmpty((string)args[3]));
+        }
+
+        [Test]
+        public void MarkdownTarget_AssetsRelativePath_ReturnsError()
+        {
+            var method = typeof(AgentBridgeWindow).GetMethod("TryResolveMarkdownTargetPath",
+                BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.IsNotNull(method);
+
+            var args = new object[] { "Assets/CLAUDE.md", null, null, null };
+            var ok = (bool)method.Invoke(null, args);
+
+            Assert.IsFalse(ok);
+            Assert.IsNull(args[1]);
+            Assert.IsNull(args[2]);
+            Assert.IsFalse(string.IsNullOrEmpty((string)args[3]));
+        }
+
+        [Test]
+        public void MarkdownTarget_Upsert_ReplacesManagedBlockOnly()
+        {
+            var method = typeof(AgentBridgeWindow).GetMethod("TryUpsertManagedMarkdown",
+                BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.IsNotNull(method);
+
+            var current = "# Manual\n\n<!-- BEGIN UNITY_AGENT_BRIDGE -->\nold\n<!-- END UNITY_AGENT_BRIDGE -->\n\nkeep";
+            var args = new object[] { current, "new", null, null };
+            var ok = (bool)method.Invoke(null, args);
+            var updated = (string)args[2];
+
+            Assert.IsTrue(ok);
+            Assert.IsTrue(updated.Contains("# Manual"));
+            Assert.IsTrue(updated.Contains("keep"));
+            Assert.IsTrue(updated.Contains("new"));
+            Assert.IsFalse(updated.Contains("old"));
+            Assert.IsNull(args[3]);
+        }
+
+        [Test]
+        public void MarkdownTarget_CurrentBlockDetection_DistinguishesUpdatedFromStale()
+        {
+            var upsert = typeof(AgentBridgeWindow).GetMethod("TryUpsertManagedMarkdown",
+                BindingFlags.NonPublic | BindingFlags.Static);
+            var isCurrent = typeof(AgentBridgeWindow).GetMethod("IsManagedMarkdownCurrent",
+                BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.IsNotNull(upsert);
+            Assert.IsNotNull(isCurrent);
+
+            var args = new object[] { "# Manual", "new", null, null };
+            var ok = (bool)upsert.Invoke(null, args);
+            var updated = (string)args[2];
+
+            Assert.IsTrue(ok);
+            Assert.IsTrue((bool)isCurrent.Invoke(null, new object[] { updated, "new" }));
+            Assert.IsFalse((bool)isCurrent.Invoke(null, new object[] { updated, "stale" }));
         }
 
         [Test]

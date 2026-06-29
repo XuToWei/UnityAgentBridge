@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
@@ -7,21 +8,55 @@ namespace AgentBridge
 {
     /// <summary>
     /// AgentBridge 控制窗口(命令管理器 EM4)。顶部复选框启停桥接 + 失焦节流;命令按 ICommandHandler.Group
-    /// 功能分组,用多选下拉筛选要显示的组;逐命令打勾启停(CommandToggle,CanDisable=false 的命令锁定);
-    /// 底部列已装扩展并可卸载。
+    /// 功能分组,用多选下拉筛选要显示的组;逐命令打勾启停(CommandToggle,CanDisable=false 的命令锁定)。
     /// </summary>
     public sealed class AgentBridgeWindow : EditorWindow
     {
+        private const string PackageName = "com.unityagentbridge.core";
+        private const string MarkdownBlockStart = "<!-- BEGIN UNITY_AGENT_BRIDGE -->";
+        private const string MarkdownBlockEnd = "<!-- END UNITY_AGENT_BRIDGE -->";
+        private const float ListLeadingSpaceWidth = 2f;
+        private const float CommandEnabledColumnWidth = 76f;
+        private const float CommandNameColumnWidth = 150f;
+        private const float MarkdownStateColumnWidth = 72f;
+        private const float MarkdownActionColumnWidth = 112f;
+        private static readonly string[] s_MarkdownTargetFileNames = { "CLAUDE.md", "AGENTS.md" };
+
         private static readonly Color s_ZebraColor = new Color(0f, 0f, 0f, 0.06f);
+
+        private static readonly string[] s_TabNames = { "AI 指令", "命令" };
+
+        private sealed class MarkdownTargetOption
+        {
+            public MarkdownTargetOption(string relativePath, string label)
+            {
+                RelativePath = relativePath;
+                Label = label;
+            }
+
+            public string RelativePath { get; }
+            public string Label { get; }
+        }
 
         private List<CommandEntry> m_Commands = new List<CommandEntry>();
         private string m_NameFilter = "";
         private string m_SelectedGroup;   // null = 全部(单选)
-        private int m_NameSort;     // 0 名称 A→Z / 1 名称 Z→A
-        private int m_PrioritySort; // 0 启用在前 / 1 禁用在前
+        private CommandSortColumn m_CommandSortColumn = CommandSortColumn.Name;
+        private bool m_EnabledSortAscending = true;
+        private bool m_NameSortAscending = true;
+        private int m_SelectedTab;
         private Vector2 m_Scroll;
+        private string m_MarkdownStatus = "";
+        private MessageType m_MarkdownStatusType = MessageType.Info;
 
         private GUIStyle m_SectionStyle;
+        private GUIStyle m_SortHeaderStyle;
+
+        private enum CommandSortColumn
+        {
+            Enabled,
+            Name
+        }
 
         [MenuItem("Window/Agent Bridge Window")]
         public static void Open()
@@ -31,7 +66,7 @@ namespace AgentBridge
 
         private void OnEnable()
         {
-            minSize = new Vector2(440f, 320f); // 保证最宽一行(分组+批量)与表头完整显示
+            minSize = new Vector2(660f, 380f); // 保证工具条、分组与表头都有足够空间
             Rescan();
         }
 
@@ -44,9 +79,16 @@ namespace AgentBridge
         {
             if (m_SectionStyle != null)
             {
-                return;
+                if (m_SortHeaderStyle != null)
+                {
+                    return;
+                }
             }
-            m_SectionStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 12 };
+            m_SectionStyle = new GUIStyle(EditorStyles.miniBoldLabel);
+            m_SortHeaderStyle = new GUIStyle(EditorStyles.label)
+            {
+                alignment = TextAnchor.MiddleLeft
+            };
         }
 
         private static GUIContent IconText(string iconName, string text)
@@ -58,44 +100,40 @@ namespace AgentBridge
         private void OnGUI()
         {
             EnsureStyles();
-            DrawSectionTitle("桥接控制");
-            DrawControlRow();
-            DrawSectionTitle("命令");
-            DrawCountRow();
-            DrawSearchRow();
+            DrawGlobalToolbar();
+            EditorGUILayout.Space(4);
+            DrawTabs();
+            EditorGUILayout.Space(6);
 
-            var groups = GroupByTag(Filtered());
-            DrawGroupRow(groups);
-
-            var shown = SortCommands(VisibleCommands(groups)).ToList();
-
-            if (shown.Count == 0)
+            switch (m_SelectedTab)
             {
-                EditorGUILayout.Space(8);
-                EditorGUILayout.LabelField(m_Commands.Count == 0 ? "(无命令)" : "(无匹配命令)",
-                    EditorStyles.centeredGreyMiniLabel);
+                case 0:
+                    DrawSectionTitle("AI 指令片段");
+                    DrawMarkdownToolSection();
+                    break;
+                case 1:
+                    DrawSectionTitle("命令");
+                    DrawCommandSection();
+                    break;
             }
-            else
-            {
-                DrawListHeader();
-                m_Scroll = EditorGUILayout.BeginScrollView(m_Scroll);
-                for (int i = 0; i < shown.Count; i++)
-                {
-                    DrawCommandRow(shown[i], i);
-                }
-                EditorGUILayout.EndScrollView();
-            }
-
-            DrawExtensionsFooter();
         }
 
-        // 控制条:桥接启停 + 失焦节流(复选框)+ 刷新。
-        private void DrawControlRow()
+        private void DrawTabs()
         {
-            using (new EditorGUILayout.HorizontalScope())
+            if (m_SelectedTab < 0 || m_SelectedTab >= s_TabNames.Length)
+            {
+                m_SelectedTab = 0;
+            }
+            m_SelectedTab = GUILayout.Toolbar(m_SelectedTab, s_TabNames);
+        }
+
+        private void DrawGlobalToolbar()
+        {
+            using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))
             {
                 var running = AgentBridgeHost.IsRunning;
-                var newRunning = EditorGUILayout.ToggleLeft("启用桥接", running, GUILayout.Width(86));
+                var newRunning = GUILayout.Toggle(running, new GUIContent("启用桥接", "启动或停止文件轮询主机"),
+                    EditorStyles.toolbarButton, GUILayout.Width(86));
                 if (newRunning != running)
                 {
                     if (newRunning)
@@ -109,7 +147,8 @@ namespace AgentBridge
                 }
 
                 var background = BridgeBackgroundMode.IsNoThrottling;
-                var newBackground = EditorGUILayout.ToggleLeft("后台运行", background, GUILayout.Width(86));
+                var newBackground = GUILayout.Toggle(background, new GUIContent("后台运行", "失焦时继续轮询"),
+                    EditorStyles.toolbarButton, GUILayout.Width(86));
                 if (newBackground != background)
                 {
                     if (newBackground)
@@ -122,42 +161,51 @@ namespace AgentBridge
                     }
                 }
 
-                if (GUILayout.Button(IconText("Refresh", "刷新"), GUILayout.Width(72)))
+                if (GUILayout.Button(IconText("Refresh", "刷新"), EditorStyles.toolbarButton, GUILayout.Width(54)))
                 {
                     Rescan();
                 }
+
                 GUILayout.FlexibleSpace();
+                EditorGUILayout.LabelField(new GUIContent(
+                        AgentBridgeHost.IsRunning ? "运行中" : "已停止",
+                        "根目录: " + BridgeSettings.RootDir + "\n轮询: " + BridgeSettings.PollIntervalMs + " ms"),
+                    EditorStyles.miniLabel, GUILayout.Width(72));
             }
         }
 
-        private static void DrawSeparator()
+        private void DrawCommandSection()
         {
-            var line = EditorGUILayout.GetControlRect(false, 1);
-            EditorGUI.DrawRect(line, new Color(0f, 0f, 0f, 0.2f));
+            var groups = GroupByTag(Filtered());
+            var visibleCommands = VisibleCommands(groups);
+            DrawCommandToolbar(groups, visibleCommands);
+
+            var shown = SortCommands(visibleCommands).ToList();
+            if (shown.Count == 0)
+            {
+                EditorGUILayout.Space(8);
+                EditorGUILayout.LabelField(m_Commands.Count == 0 ? "(无命令)" : "(无匹配命令)",
+                    EditorStyles.centeredGreyMiniLabel);
+                return;
+            }
+
+            DrawListHeader();
+            m_Scroll = EditorGUILayout.BeginScrollView(m_Scroll);
+            for (int i = 0; i < shown.Count; i++)
+            {
+                DrawCommandRow(shown[i], i);
+            }
+            EditorGUILayout.EndScrollView();
         }
 
-        // 区块标题(加粗 + 下分隔线)。
-        private void DrawSectionTitle(string text)
+        private void DrawCommandToolbar(List<CommandGroup> groups, List<CommandEntry> visibleCommands)
         {
-            EditorGUILayout.Space(2);
-            EditorGUILayout.LabelField(text, m_SectionStyle);
-            DrawSeparator();
-        }
-
-        private void DrawSearchRow()
-        {
-            using (new EditorGUILayout.HorizontalScope())
+            using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))
             {
                 GUILayout.Label("搜索", GUILayout.Width(32));
-                m_NameFilter = EditorGUILayout.TextField(m_NameFilter);
-            }
-        }
+                m_NameFilter = EditorGUILayout.TextField(m_NameFilter, EditorStyles.toolbarSearchField, GUILayout.MinWidth(180));
 
-        // 分组单选 + 批量启停(排序改由列表表头点击处理)。
-        private void DrawGroupRow(List<CommandGroup> groups)
-        {
-            using (new EditorGUILayout.HorizontalScope())
-            {
+                GUILayout.Space(8);
                 GUILayout.Label("分组", GUILayout.Width(32));
                 var keys = new List<string> { "全部" };
                 keys.AddRange(groups.Select(g => g.Key));
@@ -167,28 +215,87 @@ namespace AgentBridge
                 {
                     cur = 0;
                 }
-                var picked = EditorGUILayout.Popup(cur, arr, GUILayout.Width(120));
+                var picked = EditorGUILayout.Popup(cur, arr, EditorStyles.toolbarPopup, GUILayout.Width(120));
                 m_SelectedGroup = picked == 0 ? null : arr[picked];
 
-                GUILayout.Space(12);
-                if (GUILayout.Button("全部启用", GUILayout.Width(72)))
+                GUILayout.Space(8);
+                if (GUILayout.Button("全部启用", EditorStyles.toolbarButton, GUILayout.Width(72)))
                 {
                     SetAll(groups, true);
                 }
-                if (GUILayout.Button("全部禁用", GUILayout.Width(72)))
+                if (GUILayout.Button("全部禁用", EditorStyles.toolbarButton, GUILayout.Width(72)))
                 {
                     SetAll(groups, false);
                 }
+
                 GUILayout.FlexibleSpace();
+                var visibleCount = visibleCommands.Count;
+                var enabledCount = visibleCommands.Count(c => c.Enabled);
+                EditorGUILayout.LabelField($"显示 {visibleCount} · 启用 {enabledCount}", EditorStyles.miniLabel,
+                    GUILayout.Width(130));
             }
         }
 
-        // 命令计数信息(搜索上方)。
-        private void DrawCountRow()
+        private static void DrawSeparator()
         {
-            int n = m_Commands.Count;
-            int e = m_Commands.Count(c => c.Enabled);
-            EditorGUILayout.LabelField($"命令 {n} · 启用 {e} · 禁用 {n - e}", EditorStyles.label);
+            var line = EditorGUILayout.GetControlRect(false, 1);
+            EditorGUI.DrawRect(line, new Color(0f, 0f, 0f, 0.14f));
+        }
+
+        // 区块标题(加粗 + 下分隔线)。
+        private void DrawSectionTitle(string text)
+        {
+            EditorGUILayout.Space(1);
+            EditorGUILayout.LabelField(text, m_SectionStyle);
+            DrawSeparator();
+        }
+
+        private void DrawMarkdownToolSection()
+        {
+            var targetOptions = FindMarkdownTargetOptions();
+
+            EditorGUILayout.LabelField("把 AgentBridge 的 AI 使用指令写入 CLAUDE.md / AGENTS.md,让 AI 知道如何通过桥接调用 Unity。只更新 AgentBridge 标记区,其余内容保留。", EditorStyles.wordWrappedMiniLabel);
+            if (targetOptions.Count == 0)
+            {
+                EditorGUILayout.HelpBox("未找到 CLAUDE.md 或 AGENTS.md,写入不会生效。", MessageType.Warning);
+            }
+            else
+            {
+                TryLoadClaudeTemplate(out var template, out _);
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    GUILayout.Space(ListLeadingSpaceWidth);
+                    GUILayout.Label("目标文件", EditorStyles.miniBoldLabel);
+                    GUILayout.Label("状态", EditorStyles.miniBoldLabel, GUILayout.Width(MarkdownStateColumnWidth));
+                    GUILayout.Space(MarkdownActionColumnWidth);
+                }
+
+                DrawSeparator();
+                foreach (var option in targetOptions)
+                {
+                    DrawMarkdownTargetRow(option, template);
+                }
+            }
+
+            if (!string.IsNullOrEmpty(m_MarkdownStatus))
+            {
+                EditorGUILayout.HelpBox(m_MarkdownStatus, m_MarkdownStatusType);
+            }
+        }
+
+        private void DrawMarkdownTargetRow(MarkdownTargetOption option, string template)
+        {
+            var state = GetMarkdownTargetState(option.RelativePath, template);
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                GUILayout.Space(ListLeadingSpaceWidth);
+                EditorGUILayout.LabelField(option.Label, GUILayout.MinWidth(180));
+                EditorGUILayout.LabelField(state, EditorStyles.miniLabel, GUILayout.Width(MarkdownStateColumnWidth));
+                if (GUILayout.Button("写入/更新片段", GUILayout.Width(MarkdownActionColumnWidth)))
+                {
+                    WriteClaudeTemplate(option.RelativePath);
+                }
+            }
         }
 
         // 当前显示(经搜索 + 分组筛选)的命令,不含排序。供列表渲染与批量启停。
@@ -229,13 +336,21 @@ namespace AgentBridge
             public List<CommandEntry> Commands;
         }
 
-        // 排序:启用/禁用优先为主序(无则不分),名字为次序(或唯一序)。
+        // 排序:一次只按一个表头列排序,方向统一为升序/降序。
         private IEnumerable<CommandEntry> SortCommands(IEnumerable<CommandEntry> cmds)
         {
-            var ordered = m_PrioritySort == 0
-                ? cmds.OrderByDescending(c => c.Enabled)   // 启用在前
-                : cmds.OrderBy(c => c.Enabled);            // 禁用在前
-            return m_NameSort == 1 ? ordered.ThenByDescending(c => c.Name) : ordered.ThenBy(c => c.Name);
+            switch (m_CommandSortColumn)
+            {
+                case CommandSortColumn.Enabled:
+                    return m_EnabledSortAscending
+                        ? cmds.OrderBy(c => c.Enabled).ThenBy(c => c.Name)
+                        : cmds.OrderByDescending(c => c.Enabled).ThenBy(c => c.Name);
+                case CommandSortColumn.Name:
+                default:
+                    return m_NameSortAscending
+                        ? cmds.OrderBy(c => c.Name)
+                        : cmds.OrderByDescending(c => c.Name);
+            }
         }
 
         // 按 ICommandHandler.Group 功能分组(空则归"其它"),按收集到的分组名排列。
@@ -247,28 +362,43 @@ namespace AgentBridge
                 .ToList();
         }
 
-        // 命令列表表头兼排序控制(固定在滚动区上方,列宽与 DrawCommandRow 对齐):
-        // 点"启用"循环 不分/启用在前/禁用在前;点"命令"切名称升/降。
+        // 命令列表表头兼排序控制(固定在滚动区上方,列宽与 DrawCommandRow 对齐)。
         private void DrawListHeader()
         {
             using (new EditorGUILayout.HorizontalScope())
             {
-                GUILayout.Space(2);
-                var prio = m_PrioritySort == 0 ? "启用 ▲" : "启用 ▼";
-                if (GUILayout.Button(new GUIContent(prio, "点击切换:启用在前 / 禁用在前"),
-                    EditorStyles.label, GUILayout.Width(48)))
+                GUILayout.Space(ListLeadingSpaceWidth);
+                if (GUILayout.Button(SortHeaderContent("启用", m_EnabledSortAscending, "点击按启用状态升序/降序排序"),
+                    m_SortHeaderStyle, GUILayout.Width(CommandEnabledColumnWidth)))
                 {
-                    m_PrioritySort = 1 - m_PrioritySort;
+                    ToggleCommandSort(CommandSortColumn.Enabled);
                 }
-                var name = "命令 " + (m_NameSort == 0 ? "▲" : "▼");
-                if (GUILayout.Button(new GUIContent(name, "点击切换名称升 / 降序"),
-                    EditorStyles.label, GUILayout.Width(150)))
+                if (GUILayout.Button(SortHeaderContent("命令", m_NameSortAscending, "点击按命令名升序/降序排序"),
+                    m_SortHeaderStyle, GUILayout.Width(CommandNameColumnWidth)))
                 {
-                    m_NameSort = 1 - m_NameSort;
+                    ToggleCommandSort(CommandSortColumn.Name);
                 }
                 GUILayout.Label("描述", EditorStyles.label);
             }
             DrawSeparator();
+        }
+
+        private void ToggleCommandSort(CommandSortColumn column)
+        {
+            if (m_CommandSortColumn == column)
+            {
+                if (column == CommandSortColumn.Enabled)
+                {
+                    m_EnabledSortAscending = !m_EnabledSortAscending;
+                }
+                else
+                {
+                    m_NameSortAscending = !m_NameSortAscending;
+                }
+                return;
+            }
+
+            m_CommandSortColumn = column;
         }
 
         private void DrawCommandRow(CommandEntry cmd, int index)
@@ -279,7 +409,7 @@ namespace AgentBridge
                 EditorGUI.DrawRect(rowRect, s_ZebraColor);
             }
 
-            GUILayout.Space(2);
+            GUILayout.Space(ListLeadingSpaceWidth);
             var locked = !cmd.CanDisable;
             using (new EditorGUI.DisabledScope(locked)) // 不可禁用命令:锁定为勾选、不可取消
             {
@@ -291,37 +421,581 @@ namespace AgentBridge
                     GUIUtility.ExitGUI();
                 }
             }
-            GUILayout.Space(32); // 补足"启用"列宽,使命令名与表头"命令"列对齐
+            GUILayout.Space(CommandEnabledColumnWidth - 16f); // 补足"启用"列宽,使命令名与表头"命令"列对齐
             var nameTip = locked ? cmd.Description + "(必须命令,不可禁用)" : cmd.Description;
-            EditorGUILayout.LabelField(new GUIContent(cmd.Name, nameTip), EditorStyles.label, GUILayout.Width(150));
+            EditorGUILayout.LabelField(new GUIContent(cmd.Name, nameTip), EditorStyles.label, GUILayout.Width(CommandNameColumnWidth));
             EditorGUILayout.LabelField(cmd.Description ?? "");
 
             EditorGUILayout.EndHorizontal();
         }
 
-        // 已装扩展(来源维度,与功能分组正交):列出并可卸载。
-        private void DrawExtensionsFooter()
+        private void WriteClaudeTemplate(string targetPath)
         {
-            var exts = m_Commands.Where(c => !string.IsNullOrEmpty(c.ExtensionId))
-                .Select(c => c.ExtensionId).Distinct().OrderBy(x => x).ToList();
-            if (exts.Count == 0)
+            if (!TryResolveMarkdownTargetPath(targetPath, out var fullPath, out var relativePath, out var pathError))
             {
+                SetMarkdownStatus(pathError, MessageType.Error);
                 return;
             }
-            using (new EditorGUILayout.HorizontalScope(EditorStyles.helpBox))
+
+            var directory = Path.GetDirectoryName(fullPath);
+            if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
             {
-                GUILayout.Label("已装扩展:", GUILayout.Width(64));
-                foreach (var id in exts)
+                SetMarkdownStatus("目标目录不存在,请从候选列表重新选择 CLAUDE.md 或 AGENTS.md。", MessageType.Error);
+                return;
+            }
+
+            if (!File.Exists(fullPath))
+            {
+                SetMarkdownStatus("目标文件不存在,请从候选列表选择已有 CLAUDE.md 或 AGENTS.md。", MessageType.Error);
+                return;
+            }
+
+            if (!TryLoadClaudeTemplate(out var template, out var error))
+            {
+                SetMarkdownStatus(error, MessageType.Error);
+                return;
+            }
+
+            try
+            {
+                var current = File.Exists(fullPath) ? File.ReadAllText(fullPath) : "";
+                if (!TryUpsertManagedMarkdown(current, template, out var updated, out var updateError))
                 {
-                    if (GUILayout.Button(IconText("TreeEditor.Trash", id)))
+                    SetMarkdownStatus(updateError, MessageType.Error);
+                    return;
+                }
+
+                File.WriteAllText(fullPath, updated);
+                SetMarkdownStatus("已更新 AgentBridge 片段: " + relativePath, MessageType.Info);
+                AssetDatabase.Refresh();
+            }
+            catch (IOException ex)
+            {
+                SetMarkdownStatus("写入失败: " + ex.Message, MessageType.Error);
+            }
+            catch (System.Exception ex)
+            {
+                SetMarkdownStatus("写入失败: " + ex.Message, MessageType.Error);
+            }
+        }
+
+        private string GetMarkdownTargetState(string targetPath, string template)
+        {
+            if (!TryResolveMarkdownTargetPath(targetPath, out var fullPath, out _, out _))
+            {
+                return "无效";
+            }
+
+            if (!File.Exists(fullPath))
+            {
+                return "未更新";
+            }
+
+            if (string.IsNullOrWhiteSpace(template))
+            {
+                return "未知";
+            }
+
+            try
+            {
+                var current = File.ReadAllText(fullPath);
+                return IsManagedMarkdownCurrent(current, template) ? "已更新" : "未更新";
+            }
+            catch (IOException)
+            {
+                return "未知";
+            }
+            catch (System.UnauthorizedAccessException)
+            {
+                return "未知";
+            }
+        }
+
+        private static bool TryResolveMarkdownTargetPath(string targetPath, out string fullPath, out string relativePath, out string error)
+        {
+            fullPath = null;
+            relativePath = null;
+            error = null;
+
+            if (string.IsNullOrWhiteSpace(targetPath))
+            {
+                error = "未找到可写入的 CLAUDE.md 或 AGENTS.md,AgentBridge 提示不会写入项目文档。";
+                return false;
+            }
+
+            try
+            {
+                var input = targetPath.Trim();
+                if (Path.IsPathRooted(input))
+                {
+                    fullPath = Path.GetFullPath(input);
+                }
+                else
+                {
+                    var projectRoot = GetUnityProjectRoot();
+                    if (string.IsNullOrEmpty(projectRoot))
                     {
-                        ExtensionInstaller.Uninstall(id);
-                        Rescan();
-                        GUIUtility.ExitGUI();
+                        error = "无法定位 Unity 工程根目录,请确认当前工程包含 Assets 目录。";
+                        return false;
+                    }
+
+                    var relativeInput = NormalizeProjectRelativeInput(input);
+                    if (string.IsNullOrWhiteSpace(relativeInput))
+                    {
+                        error = "目标文件必须是候选列表中的 CLAUDE.md 或 AGENTS.md。";
+                        return false;
+                    }
+                    fullPath = Path.GetFullPath(Path.Combine(projectRoot, relativeInput));
+                }
+            }
+            catch (System.ArgumentException)
+            {
+                error = "目标文件路径无效,请从候选列表重新选择 Markdown 文件。";
+                return false;
+            }
+            catch (System.NotSupportedException)
+            {
+                error = "目标文件路径无效,请从候选列表重新选择 Markdown 文件。";
+                return false;
+            }
+            catch (PathTooLongException)
+            {
+                error = "目标文件路径过长,请从候选列表重新选择 Markdown 文件。";
+                return false;
+            }
+
+            if (!string.Equals(Path.GetExtension(fullPath), ".md", System.StringComparison.OrdinalIgnoreCase))
+            {
+                fullPath = null;
+                error = "目标文件必须是 CLAUDE.md 或 AGENTS.md。";
+                return false;
+            }
+
+            if (!IsAllowedMarkdownTargetFileName(fullPath))
+            {
+                fullPath = null;
+                error = "目标文件必须命名为 CLAUDE.md 或 AGENTS.md。";
+                return false;
+            }
+
+            if (!IsAllowedMarkdownTargetPath(fullPath))
+            {
+                fullPath = null;
+                error = "目标文件必须位于 Unity 工程根(Assets 同级)或上一层目录。";
+                return false;
+            }
+
+            if (!TryMakeProjectRelativePath(fullPath, out relativePath))
+            {
+                fullPath = null;
+                relativePath = null;
+                error = "目标文件路径无效,请从候选列表重新选择 Markdown 文件。";
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool IsAllowedMarkdownTargetFileName(string path)
+        {
+            var fileName = Path.GetFileName(path);
+            return s_MarkdownTargetFileNames.Any(name =>
+                string.Equals(fileName, name, System.StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static string NormalizeProjectRelativeInput(string path)
+        {
+            var normalized = (path ?? "").Trim().Replace('\\', '/').TrimStart('/');
+            while (normalized.StartsWith("./", System.StringComparison.Ordinal))
+            {
+                normalized = normalized.Substring(2);
+            }
+            return normalized;
+        }
+
+        private static List<MarkdownTargetOption> FindMarkdownTargetOptions()
+        {
+            var options = new List<MarkdownTargetOption>();
+            var seen = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+            foreach (var directory in GetMarkdownSearchDirectories())
+            {
+                foreach (var fileName in s_MarkdownTargetFileNames)
+                {
+                    string file;
+                    try
+                    {
+                        file = Path.Combine(directory, fileName);
+                    }
+                    catch (System.ArgumentException)
+                    {
+                        continue;
+                    }
+
+                    if (!File.Exists(file))
+                    {
+                        continue;
+                    }
+
+                    if (!TryResolveMarkdownTargetPath(file, out _, out var relativePath, out _))
+                    {
+                        continue;
+                    }
+
+                    if (!seen.Add(relativePath))
+                    {
+                        continue;
+                    }
+
+                    options.Add(new MarkdownTargetOption(relativePath, relativePath));
+                }
+            }
+
+            return options
+                .OrderBy(o => o.Label, System.StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        private static bool IsAllowedMarkdownTargetPath(string fullPath)
+        {
+            string targetDirectory;
+            try
+            {
+                targetDirectory = Path.GetDirectoryName(Path.GetFullPath(fullPath));
+            }
+            catch (System.ArgumentException)
+            {
+                return false;
+            }
+            catch (System.NotSupportedException)
+            {
+                return false;
+            }
+            catch (PathTooLongException)
+            {
+                return false;
+            }
+
+            if (string.IsNullOrEmpty(targetDirectory))
+            {
+                return false;
+            }
+
+            return GetMarkdownSearchDirectories().Any(directory => IsSameDirectory(targetDirectory, directory));
+        }
+
+        private static List<string> GetMarkdownSearchDirectories()
+        {
+            var directories = new List<string>();
+            var projectRoot = GetUnityProjectRoot();
+            if (string.IsNullOrEmpty(projectRoot))
+            {
+                return directories;
+            }
+
+            directories.Add(projectRoot);
+
+            DirectoryInfo parent;
+            try
+            {
+                parent = Directory.GetParent(projectRoot);
+            }
+            catch (System.ArgumentException)
+            {
+                return directories;
+            }
+            catch (System.NotSupportedException)
+            {
+                return directories;
+            }
+
+            if (parent != null && !IsSameDirectory(projectRoot, parent.FullName))
+            {
+                directories.Add(parent.FullName);
+            }
+
+            return directories;
+        }
+
+        private static string GetUnityProjectRoot()
+        {
+            try
+            {
+                if (!string.IsNullOrEmpty(Application.dataPath))
+                {
+                    var assetsPath = Path.GetFullPath(Application.dataPath);
+                    var parent = Directory.GetParent(assetsPath);
+                    if (parent != null && Directory.Exists(parent.FullName))
+                    {
+                        return parent.FullName;
                     }
                 }
-                GUILayout.FlexibleSpace();
             }
+            catch (System.ArgumentException)
+            {
+            }
+            catch (System.NotSupportedException)
+            {
+            }
+            catch (System.UnauthorizedAccessException)
+            {
+            }
+            catch (IOException)
+            {
+            }
+
+            try
+            {
+                var currentDirectory = Directory.GetCurrentDirectory();
+                if (!string.IsNullOrEmpty(currentDirectory) && Directory.Exists(currentDirectory))
+                {
+                    return currentDirectory;
+                }
+            }
+            catch (System.ArgumentException)
+            {
+            }
+            catch (System.NotSupportedException)
+            {
+            }
+            catch (System.UnauthorizedAccessException)
+            {
+            }
+            catch (IOException)
+            {
+            }
+
+            return null;
+        }
+
+        private static bool TryMakeProjectRelativePath(string fullPath, out string relativePath)
+        {
+            relativePath = null;
+
+            try
+            {
+                var projectRoot = GetUnityProjectRoot();
+                if (string.IsNullOrEmpty(projectRoot))
+                {
+                    return false;
+                }
+
+                var rootUri = new System.Uri(EnsureTrailingDirectorySeparator(Path.GetFullPath(projectRoot)));
+                var fileUri = new System.Uri(Path.GetFullPath(fullPath));
+                if (!string.Equals(rootUri.Scheme, fileUri.Scheme, System.StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+
+                relativePath = System.Uri.UnescapeDataString(rootUri.MakeRelativeUri(fileUri).ToString())
+                    .Replace('\\', '/');
+                return !string.IsNullOrWhiteSpace(relativePath);
+            }
+            catch (System.ArgumentException)
+            {
+                return false;
+            }
+            catch (System.NotSupportedException)
+            {
+                return false;
+            }
+            catch (PathTooLongException)
+            {
+                return false;
+            }
+        }
+
+        private static bool IsSameDirectory(string left, string right)
+        {
+            try
+            {
+                var normalizedLeft = TrimDirectorySeparator(Path.GetFullPath(left));
+                var normalizedRight = TrimDirectorySeparator(Path.GetFullPath(right));
+                return string.Equals(normalizedLeft, normalizedRight, System.StringComparison.OrdinalIgnoreCase);
+            }
+            catch (System.ArgumentException)
+            {
+                return false;
+            }
+            catch (System.NotSupportedException)
+            {
+                return false;
+            }
+            catch (PathTooLongException)
+            {
+                return false;
+            }
+        }
+
+        private static string TrimDirectorySeparator(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+            {
+                return path;
+            }
+
+            return path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        }
+
+        private static string EnsureTrailingDirectorySeparator(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+            {
+                return path;
+            }
+            return path.EndsWith(Path.DirectorySeparatorChar.ToString(), System.StringComparison.Ordinal)
+                || path.EndsWith(Path.AltDirectorySeparatorChar.ToString(), System.StringComparison.Ordinal)
+                ? path
+                : path + Path.DirectorySeparatorChar;
+        }
+
+        private static GUIContent SortHeaderContent(string label, bool ascending, string tooltip)
+        {
+            return new GUIContent(label + (ascending ? " ▲" : " ▼"), tooltip);
+        }
+
+        private static bool TryUpsertManagedMarkdown(string current, string template, out string updated, out string error)
+        {
+            updated = null;
+            error = null;
+
+            current = current ?? "";
+            var block = BuildManagedMarkdownBlock(template);
+            var startIndex = current.IndexOf(MarkdownBlockStart, System.StringComparison.Ordinal);
+            var endIndex = current.IndexOf(MarkdownBlockEnd, System.StringComparison.Ordinal);
+
+            if (startIndex < 0 && endIndex < 0)
+            {
+                updated = string.IsNullOrWhiteSpace(current)
+                    ? block
+                    : current + (current.EndsWith("\n", System.StringComparison.Ordinal) ? "\n" : "\n\n") + block;
+                return true;
+            }
+
+            if (startIndex < 0 || endIndex < 0 || endIndex < startIndex)
+            {
+                error = "目标文件里的 Unity Agent Bridge 管理标记不完整,请手动修复 BEGIN/END 标记后再写入。";
+                return false;
+            }
+
+            if (current.IndexOf(MarkdownBlockStart, startIndex + MarkdownBlockStart.Length, System.StringComparison.Ordinal) >= 0
+                || current.IndexOf(MarkdownBlockEnd, endIndex + MarkdownBlockEnd.Length, System.StringComparison.Ordinal) >= 0)
+            {
+                error = "目标文件里存在多个 Unity Agent Bridge 管理标记,请保留一组 BEGIN/END 标记后再写入。";
+                return false;
+            }
+
+            endIndex += MarkdownBlockEnd.Length;
+            updated = current.Substring(0, startIndex) + block + current.Substring(endIndex);
+            return true;
+        }
+
+        private static bool IsManagedMarkdownCurrent(string current, string template)
+        {
+            current = current ?? "";
+            var block = BuildManagedMarkdownBlock(template);
+            var startIndex = current.IndexOf(MarkdownBlockStart, System.StringComparison.Ordinal);
+            var endIndex = current.IndexOf(MarkdownBlockEnd, System.StringComparison.Ordinal);
+            if (startIndex < 0 || endIndex < 0 || endIndex < startIndex)
+            {
+                return false;
+            }
+
+            if (current.IndexOf(MarkdownBlockStart, startIndex + MarkdownBlockStart.Length, System.StringComparison.Ordinal) >= 0
+                || current.IndexOf(MarkdownBlockEnd, endIndex + MarkdownBlockEnd.Length, System.StringComparison.Ordinal) >= 0)
+            {
+                return false;
+            }
+
+            endIndex += MarkdownBlockEnd.Length;
+            var existingBlock = current.Substring(startIndex, endIndex - startIndex);
+            return string.Equals(NormalizeMarkdownForCompare(existingBlock), NormalizeMarkdownForCompare(block), System.StringComparison.Ordinal);
+        }
+
+        private static string NormalizeMarkdownForCompare(string value)
+        {
+            return (value ?? "").Replace("\r\n", "\n").TrimEnd();
+        }
+
+        private static string BuildManagedMarkdownBlock(string template)
+        {
+            return MarkdownBlockStart + "\n"
+                + (template ?? "").Trim() + "\n"
+                + MarkdownBlockEnd + "\n";
+        }
+
+        private bool TryLoadClaudeTemplate(out string template, out string error)
+        {
+            template = null;
+            error = null;
+
+            var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssetPath("Packages/" + PackageName);
+            if (packageInfo == null)
+            {
+                error = "未找到 Unity Agent Bridge 包路径。请确认包名仍为 com.unityagentbridge.core，且当前窗口运行在该包已安装的项目中。";
+                return false;
+            }
+
+            var agentPath = Path.Combine(packageInfo.resolvedPath, "AGENT.md");
+            if (!File.Exists(agentPath))
+            {
+                error = "未找到 AGENT.md: " + agentPath;
+                return false;
+            }
+
+            try
+            {
+                var text = File.ReadAllText(agentPath);
+                var sectionIndex = text.IndexOf("## 7. 复制到你的项目 CLAUDE.md", System.StringComparison.Ordinal);
+                if (sectionIndex < 0)
+                {
+                    error = "AGENT.md 中未找到“## 7. 复制到你的项目 CLAUDE.md”这一节，请检查文档结构是否被改动。";
+                    return false;
+                }
+
+                var blockStart = text.IndexOf("```markdown", sectionIndex, System.StringComparison.Ordinal);
+                if (blockStart < 0)
+                {
+                    error = "AGENT.md 第 7 节中未找到 ```markdown 代码块起始标记，请确认模板仍放在该代码块中。";
+                    return false;
+                }
+
+                blockStart += "```markdown".Length;
+                if (blockStart < text.Length && text[blockStart] == '\r')
+                {
+                    blockStart++;
+                }
+                if (blockStart < text.Length && text[blockStart] == '\n')
+                {
+                    blockStart++;
+                }
+
+                var blockEnd = text.IndexOf("```", blockStart, System.StringComparison.Ordinal);
+                if (blockEnd < 0)
+                {
+                    error = "AGENT.md 第 7 节中未找到 markdown 代码块结束标记，请检查代码块是否闭合。";
+                    return false;
+                }
+
+                template = text.Substring(blockStart, blockEnd - blockStart);
+                if (string.IsNullOrWhiteSpace(template))
+                {
+                    error = "AGENT.md 第 7 节模板内容为空，当前无法生成写入内容。";
+                    return false;
+                }
+
+                return true;
+            }
+            catch (IOException ex)
+            {
+                error = "读取 AGENT.md 失败: " + ex.Message;
+                return false;
+            }
+        }
+
+        private void SetMarkdownStatus(string message, MessageType type)
+        {
+            m_MarkdownStatus = message;
+            m_MarkdownStatusType = type;
         }
     }
 }

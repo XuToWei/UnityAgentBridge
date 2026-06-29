@@ -9,7 +9,6 @@ namespace AgentBridge
         public bool CanDisable { get; set; }      // ICommandHandler.CanDisable(能否被禁用)
         public string Assembly { get; set; }      // Type.Assembly 名
         public bool IsBuiltin { get; set; }       // Assembly == "AgentBridge.Editor"
-        public string ExtensionId { get; set; }   // 折射到的扩展 id(命令∈manifest.commands);无则 null
         public bool Enabled { get; set; }         // 不在全局禁用名单
     }
 }
