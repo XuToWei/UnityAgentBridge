@@ -14,7 +14,7 @@ Agent ↔ Unity 通过**文件**通讯,无网络。根目录 `<root>` 默认 `<U
 └── responses/   Unity 写 {id}.response.json(你读)
 ```
 
-> ⚠️ Unity 编辑器**失焦时默认不轮询**。若需失焦也驱动,在 Unity 开 `Window/Agent Bridge Window`、勾选顶部「失焦不节流」开关。
+> ⚠️ Unity 编辑器**失焦时默认不轮询**。若需失焦也驱动,在 Unity 开 `Window/Agent Bridge`、勾选顶部「失焦不节流」开关。
 
 ## 2. 发一条命令
 
@@ -104,5 +104,5 @@ handler 可返回自有错误码(如 `MENU_NOT_FOUND`)。
 - 读响应:轮询 `<root>/responses/{id}.response.json`。
 - **先调 `list_commands`** 拿可用命令并缓存(含 `commandsVersion`)。之后任意响应的 `commandsVersion` 与缓存不一致、或装/卸扩展后、或遇 `UNKNOWN_COMMAND`,就重新 `list_commands`。
 - 完整协议见 Unity 包内 `AGENT.md`。
-- (可选)失焦也要驱动时,在 Unity 开 `Window/Agent Bridge Window` 勾顶部「失焦不节流」。
+- (可选)失焦也要驱动时,在 Unity 开 `Window/Agent Bridge` 勾顶部「失焦不节流」。
 ```

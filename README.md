@@ -79,7 +79,7 @@ The host auto-starts on load. The bridge root defaults to `<project>/AgentBridge
 
 ### Command Manager
 
-`Window ▸ Agent Bridge Window` lists every command (built-in + extension) discovered via Unity `TypeCache`, grouped by **function** (`ICommandHandler.Group`), with click-to-sort headers, per-group filter, and bulk enable/disable. A top toolbar starts/stops the bridge host and toggles background (no-throttling) polling. Toggle any command on/off — a disabled command is **hidden from `list_commands`** and returns `COMMAND_DISABLED` on dispatch (the disable list is persisted in `EditorPrefs`, namespaced per project). Essential commands (`CanDisable == false`, e.g. `ping` / `list_commands`) are locked on.
+`Window ▸ Agent Bridge` lists every command (built-in + extension) discovered via Unity `TypeCache`, grouped by **function** (`ICommandHandler.Group`), with click-to-sort headers, per-group filter, and bulk enable/disable. A top toolbar starts/stops the bridge host and toggles background (no-throttling) polling. Toggle any command on/off — a disabled command is **hidden from `list_commands`** and returns `COMMAND_DISABLED` on dispatch (the disable list is persisted in `EditorPrefs`, namespaced per project). Essential commands (`CanDisable == false`, e.g. `ping` / `list_commands`) are locked on.
 
 ### Add your own command
 
@@ -179,7 +179,7 @@ agent <── AgentBridge/responses/{id}.response.json
 
 ### 命令管理器
 
-`Window ▸ Agent Bridge Window` 用 Unity `TypeCache` 列出所有命令(内置 + 扩展),按**功能分组**(`ICommandHandler.Group`),表头点击排序、分组筛选、批量启停;顶部工具条启停桥接主机、切换后台运行。任意命令可打勾启停——被禁用的命令**从 `list_commands` 隐藏**、分发时返回 `COMMAND_DISABLED`(禁用名单存 `EditorPrefs`,按工程命名空间隔离)。必须命令(`CanDisable == false`,如 `ping` / `list_commands`)锁定为常开。
+`Window ▸ Agent Bridge` 用 Unity `TypeCache` 列出所有命令(内置 + 扩展),按**功能分组**(`ICommandHandler.Group`),表头点击排序、分组筛选、批量启停;顶部工具条启停桥接主机、切换后台运行。任意命令可打勾启停——被禁用的命令**从 `list_commands` 隐藏**、分发时返回 `COMMAND_DISABLED`(禁用名单存 `EditorPrefs`,按工程命名空间隔离)。必须命令(`CanDisable == false`,如 `ping` / `list_commands`)锁定为常开。
 
 ### 添加自定义命令
 

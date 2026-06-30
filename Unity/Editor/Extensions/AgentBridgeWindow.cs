@@ -23,7 +23,6 @@ namespace AgentBridge
         private static readonly string[] s_MarkdownTargetFileNames = { "CLAUDE.md", "AGENTS.md" };
 
         private static readonly Color s_ZebraColor = new Color(0f, 0f, 0f, 0.06f);
-
         private static readonly string[] s_TabNames = { "AI 指令", "命令" };
 
         private sealed class MarkdownTargetOption
@@ -51,6 +50,7 @@ namespace AgentBridge
 
         private GUIStyle m_SectionStyle;
         private GUIStyle m_SortHeaderStyle;
+        private GUIStyle m_SuccessMiniLabelStyle;
 
         private enum CommandSortColumn
         {
@@ -58,10 +58,10 @@ namespace AgentBridge
             Name
         }
 
-        [MenuItem("Window/Agent Bridge Window")]
+        [MenuItem("Window/Agent Bridge")]
         public static void Open()
         {
-            GetWindow<AgentBridgeWindow>("AgentBridge").Rescan();
+            GetWindow<AgentBridgeWindow>("Agent Bridge").Rescan();
         }
 
         private void OnEnable()
@@ -79,7 +79,7 @@ namespace AgentBridge
         {
             if (m_SectionStyle != null)
             {
-                if (m_SortHeaderStyle != null)
+                if (m_SortHeaderStyle != null && m_SuccessMiniLabelStyle != null)
                 {
                     return;
                 }
@@ -89,6 +89,26 @@ namespace AgentBridge
             {
                 alignment = TextAnchor.MiddleLeft
             };
+            m_SuccessMiniLabelStyle = new GUIStyle(EditorStyles.miniLabel);
+            var successTextColor = GetSuccessTextColor();
+            m_SuccessMiniLabelStyle.normal.textColor = successTextColor;
+            m_SuccessMiniLabelStyle.hover.textColor = successTextColor;
+            m_SuccessMiniLabelStyle.active.textColor = successTextColor;
+            m_SuccessMiniLabelStyle.focused.textColor = successTextColor;
+        }
+
+        private static Color GetSuccessTextColor()
+        {
+            return EditorGUIUtility.isProSkin
+                ? new Color(0.45f, 0.9f, 0.52f)
+                : new Color(0.02f, 0.5f, 0.16f);
+        }
+
+        private static Color GetSuccessBackgroundColor()
+        {
+            return EditorGUIUtility.isProSkin
+                ? new Color(0.18f, 0.5f, 0.24f)
+                : new Color(0.32f, 0.78f, 0.38f);
         }
 
         private static GUIContent IconText(string iconName, string text)
@@ -132,8 +152,17 @@ namespace AgentBridge
             using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))
             {
                 var running = AgentBridgeHost.IsRunning;
+                var oldBackgroundColor = GUI.backgroundColor;
+                var oldContentColor = GUI.contentColor;
+                if (running)
+                {
+                    GUI.backgroundColor = GetSuccessBackgroundColor();
+                    GUI.contentColor = Color.white;
+                }
                 var newRunning = GUILayout.Toggle(running, new GUIContent("启用桥接", "启动或停止文件轮询主机"),
                     EditorStyles.toolbarButton, GUILayout.Width(86));
+                GUI.backgroundColor = oldBackgroundColor;
+                GUI.contentColor = oldContentColor;
                 if (newRunning != running)
                 {
                     if (newRunning)
@@ -170,7 +199,7 @@ namespace AgentBridge
                 EditorGUILayout.LabelField(new GUIContent(
                         AgentBridgeHost.IsRunning ? "运行中" : "已停止",
                         "根目录: " + BridgeSettings.RootDir + "\n轮询: " + BridgeSettings.PollIntervalMs + " ms"),
-                    EditorStyles.miniLabel, GUILayout.Width(72));
+                    AgentBridgeHost.IsRunning ? m_SuccessMiniLabelStyle : EditorStyles.miniLabel, GUILayout.Width(72));
             }
         }
 
@@ -254,7 +283,8 @@ namespace AgentBridge
         {
             var targetOptions = FindMarkdownTargetOptions();
 
-            EditorGUILayout.LabelField("把 AgentBridge 的 AI 使用指令写入 CLAUDE.md / AGENTS.md,让 AI 知道如何通过桥接调用 Unity。只更新 AgentBridge 标记区,其余内容保留。", EditorStyles.wordWrappedMiniLabel);
+            EditorGUILayout.LabelField("把 AgentBridge 的 AI 使用指令写入 CLAUDE.md / AGENTS.md,让 AI 知道如何通过桥接调用 Unity。", EditorStyles.wordWrappedMiniLabel);
+            EditorGUILayout.LabelField("只更新 AgentBridge 标记区,其余内容保留。", EditorStyles.wordWrappedMiniLabel);
             if (targetOptions.Count == 0)
             {
                 EditorGUILayout.HelpBox("未找到 CLAUDE.md 或 AGENTS.md,写入不会生效。", MessageType.Warning);
@@ -290,7 +320,8 @@ namespace AgentBridge
             {
                 GUILayout.Space(ListLeadingSpaceWidth);
                 EditorGUILayout.LabelField(option.Label, GUILayout.MinWidth(180));
-                EditorGUILayout.LabelField(state, EditorStyles.miniLabel, GUILayout.Width(MarkdownStateColumnWidth));
+                EditorGUILayout.LabelField(state, state == "已更新" ? m_SuccessMiniLabelStyle : EditorStyles.miniLabel,
+                    GUILayout.Width(MarkdownStateColumnWidth));
                 if (GUILayout.Button("写入/更新片段", GUILayout.Width(MarkdownActionColumnWidth)))
                 {
                     WriteClaudeTemplate(option.RelativePath);

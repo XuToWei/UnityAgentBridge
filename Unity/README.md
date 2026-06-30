@@ -16,7 +16,7 @@ https://github.com/<owner>/UnityAgentBridge.git?path=/Unity
 
 ## 启动
 
-加载后宿主经 `[InitializeOnLoad]` 自动启动,也可在 `Window/Agent Bridge Window` 顶部工具条启停 / 切失焦不节流。
+加载后宿主经 `[InitializeOnLoad]` 自动启动,也可在 `Window/Agent Bridge` 顶部工具条启停 / 切失焦不节流。
 
 默认文件根目录:`<UnityProject>/AgentBridge/`,含 `requests/` `processing/` `responses/`。
 可经 `AgentBridge.BridgeSettings.RootDir` / `PollIntervalMs`(EditorPrefs)调整。
