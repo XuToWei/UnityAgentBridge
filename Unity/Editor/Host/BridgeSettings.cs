@@ -18,7 +18,7 @@ namespace AgentBridge
             set => EditorPrefs.SetInt(PollKey, value);
         }
 
-        /// <summary>文件通讯根目录,默认 &lt;UnityProject&gt;/AgentBridge。</summary>
+        /// <summary>文件通讯根目录,默认 &lt;UnityProject&gt;/.agentbridge。</summary>
         public static string RootDir
         {
             get => EditorPrefs.GetString(RootKey, DefaultRootDir());
@@ -29,7 +29,7 @@ namespace AgentBridge
         {
             // Application.dataPath = <project>/Assets,其父目录即工程根。
             var projectRoot = Directory.GetParent(Application.dataPath).FullName;
-            return Path.Combine(projectRoot, "AgentBridge");
+            return Path.Combine(projectRoot, ".agentbridge");
         }
     }
 }

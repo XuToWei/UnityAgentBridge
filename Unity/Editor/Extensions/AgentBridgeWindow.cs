@@ -177,8 +177,15 @@ namespace AgentBridge
                 }
 
                 var background = BridgeBackgroundMode.IsNoThrottling;
+                if (background)
+                {
+                    GUI.backgroundColor = GetSuccessBackgroundColor();
+                    GUI.contentColor = Color.white;
+                }
                 var newBackground = GUILayout.Toggle(background, new GUIContent("后台运行", "失焦时继续轮询"),
                     EditorStyles.toolbarButton, GUILayout.Width(86));
+                GUI.backgroundColor = oldBackgroundColor;
+                GUI.contentColor = oldContentColor;
                 if (newBackground != background)
                 {
                     if (newBackground)
@@ -302,9 +309,21 @@ namespace AgentBridge
                 }
 
                 DrawSeparator();
+                var anyUpToDate = false;
                 foreach (var option in targetOptions)
                 {
-                    DrawMarkdownTargetRow(option, template);
+                    if (DrawMarkdownTargetRow(option, template))
+                    {
+                        anyUpToDate = true;
+                    }
+                }
+
+                if (!anyUpToDate)
+                {
+                    EditorGUILayout.Space(2);
+                    EditorGUILayout.HelpBox(
+                        "尚未把 AgentBridge 指令写入任何 CLAUDE.md / AGENTS.md。AI(如 Claude Code)可能不知道本工程接入了 Agent Bridge、也不会通过它驱动 Unity。请点上方「写入/更新片段」写入指令。",
+                        MessageType.Warning);
                 }
             }
 
@@ -314,20 +333,23 @@ namespace AgentBridge
             }
         }
 
-        private void DrawMarkdownTargetRow(MarkdownTargetOption option, string template)
+        // 返回该目标文件是否已是最新的 AgentBridge 片段("已更新")。
+        private bool DrawMarkdownTargetRow(MarkdownTargetOption option, string template)
         {
             var state = GetMarkdownTargetState(option.RelativePath, template);
+            var upToDate = state == "已更新";
             using (new EditorGUILayout.HorizontalScope())
             {
                 GUILayout.Space(ListLeadingSpaceWidth);
                 EditorGUILayout.LabelField(option.Label, GUILayout.MinWidth(180));
-                EditorGUILayout.LabelField(state, state == "已更新" ? m_SuccessMiniLabelStyle : EditorStyles.miniLabel,
+                EditorGUILayout.LabelField(state, upToDate ? m_SuccessMiniLabelStyle : EditorStyles.miniLabel,
                     GUILayout.Width(MarkdownStateColumnWidth));
                 if (GUILayout.Button("写入/更新片段", GUILayout.Width(MarkdownActionColumnWidth)))
                 {
                     WriteClaudeTemplate(option.RelativePath);
                 }
             }
+            return upToDate;
         }
 
         // 当前显示(经搜索 + 分组筛选)的命令,不含排序。供列表渲染与批量启停。

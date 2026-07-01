@@ -21,11 +21,11 @@ Unity Agent Bridge is an Editor-only Unity package that exposes the Unity Editor
 ### How it works
 
 ```
-agent ──> AgentBridge/requests/{id}.request.json
+agent ──> .agentbridge/requests/{id}.request.json
                           │  (atomic claim: rename to processing/)
             Editor host (EditorApplication.update polling)
                           │  dispatch → handler on main thread
-agent <── AgentBridge/responses/{id}.response.json
+agent <── .agentbridge/responses/{id}.response.json
 ```
 
 **Request envelope**
@@ -74,7 +74,7 @@ This repo's package lives in the `Unity/` subfolder (`com.unityagentbridge.core`
   https://github.com/XuToWei/UnityAgentBridge.git?path=Unity
   ```
 
-The host auto-starts on load. The bridge root defaults to `<project>/AgentBridge/` (`requests/` `processing/` `responses/`).
+The host auto-starts on load. The bridge root defaults to `<project>/.agentbridge/` (`requests/` `processing/` `responses/`).
 
 ### Command Manager
 
@@ -114,11 +114,11 @@ Unity Agent Bridge 是一个**仅编辑器**的 Unity 包,通过**文件通讯(f
 ### 工作原理
 
 ```
-agent ──> AgentBridge/requests/{id}.request.json
+agent ──> .agentbridge/requests/{id}.request.json
                           │  (原子认领:rename 到 processing/)
             编辑器主机(EditorApplication.update 轮询)
                           │  分发 → 主线程上的 handler
-agent <── AgentBridge/responses/{id}.response.json
+agent <── .agentbridge/responses/{id}.response.json
 ```
 
 **请求信封**
@@ -167,7 +167,7 @@ agent <── AgentBridge/responses/{id}.response.json
   https://github.com/XuToWei/UnityAgentBridge.git?path=Unity
   ```
 
-主机随加载自启。桥接根目录默认 `<工程>/AgentBridge/`(`requests/` `processing/` `responses/`)。
+主机随加载自启。桥接根目录默认 `<工程>/.agentbridge/`(`requests/` `processing/` `responses/`)。
 
 ### 命令管理器
 
