@@ -71,6 +71,7 @@ Agent ↔ Unity 通过**文件**通讯,无网络。根目录 `<root>` 默认 `<U
 | `HANDLER_EXCEPTION` | 命令执行抛异常(message 带堆栈摘要) | 读 message 定位;非临时问题别盲目重试 |
 | `INTERRUPTED` | 处理中途遇编辑器重编译(domain reload) | 换新 id 重发同一请求 |
 | `INTERNAL_ERROR` | 框架内部错误(如请求 JSON 解析失败) | 检查你写的 JSON 是否合法 |
+| `CONSOLE_UNAVAILABLE` | 命令需访问 Console 但内部 API 反射失败(版本不兼容) | 该命令在当前 Unity 版本不可用,换别的方式 |
 
 handler 也可返回自有错误码(如 `MENU_NOT_FOUND`),含义见该命令 `description`。
 
@@ -82,7 +83,10 @@ handler 也可返回自有错误码(如 `MENU_NOT_FOUND`),含义见该命令 `de
 // 请求 command="list_commands"
 // 响应 result:
 { "commands": [
-    { "command": "ping", "description": "连通性测试,返回 pong 与 Unity 版本", "paramsSchema": null }
+    { "command": "ping", "description": "连通性测试,返回 pong 与 Unity 版本", "paramsSchema": null },
+    { "command": "search_logs", 
+      "description": "搜索编辑器 Console 当前日志条目:query(子串,regex=true 则正则)/type(error|warning|log)/ignoreCase/limit;返回 {total,matched,truncated,entries:[{message,type,file,line}]}", 
+      "paramsSchema": { "type": "object", "properties": { "query": { "type": "string" }, "regex": { "type": "boolean" }, "ignoreCase": { "type": "boolean" }, "type": { "type": "string", "enum": ["error","warning","log"] }, "limit": { "type": "integer" } } } }
   ],
   "commandsVersion": "1c5bb3655cdf454c" }
 ```
