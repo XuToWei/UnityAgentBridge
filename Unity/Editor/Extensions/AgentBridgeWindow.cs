@@ -106,9 +106,10 @@ namespace AgentBridge
 
         private static Color GetSuccessBackgroundColor()
         {
+            // GUI.backgroundColor 会与工具条按钮底图相乘,数值需偏高偏饱和才能呈现清晰的绿色。
             return EditorGUIUtility.isProSkin
-                ? new Color(0.18f, 0.5f, 0.24f)
-                : new Color(0.32f, 0.78f, 0.38f);
+                ? new Color(0.30f, 0.85f, 0.38f)
+                : new Color(0.36f, 0.92f, 0.44f);
         }
 
         private static GUIContent IconText(string iconName, string text)

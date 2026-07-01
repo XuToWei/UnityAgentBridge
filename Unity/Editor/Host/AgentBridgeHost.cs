@@ -12,8 +12,6 @@ namespace AgentBridge
     [InitializeOnLoad]
     public static class AgentBridgeHost
     {
-        private const string ResponsesClearedKey = "AgentBridge.ResponsesCleared";
-
         private static FileChannel s_Channel;
         private static double s_LastPollTime;
         private static bool s_Running;
@@ -52,21 +50,6 @@ namespace AgentBridge
             EditorApplication.update -= Tick;
             s_Running = false;
             Debug.Log("[AgentBridge] stopped.");
-        }
-
-        /// <summary>
-        /// 每个编辑器会话只清一次 responses/(SessionState 跨 domain reload 存活),在生成首个响应前触发。
-        /// 清掉上次会话遗留的陈旧响应;reload 时守卫已置位 → 不清,避免删掉 reload 前刚写出、AI 尚未读取的响应。
-        /// 放在写响应前(而非 Start)可天然保证:本次要写的响应在清理之后落地、不被误清。
-        /// </summary>
-        private static void ClearResponsesOncePerSession()
-        {
-            if (SessionState.GetBool(ResponsesClearedKey, false))
-            {
-                return;
-            }
-            s_Channel.ClearResponses();
-            SessionState.SetBool(ResponsesClearedKey, true);
         }
 
         /// <summary>启动时把 processing/ 中无配对响应的孤儿请求补 INTERRUPTED(at-most-once,不重试)。</summary>
@@ -131,7 +114,7 @@ namespace AgentBridge
         // 单点盖戳:任何响应写出前统一盖 commandsVersion,覆盖正常/错误/INTERRUPTED 全路径(4.7)。
         private static void WriteStamped(Response response)
         {
-            ClearResponsesOncePerSession(); // 生成响应前,每会话清一次 responses/(清上次会话残留)
+            s_Channel.ClearResponses(); // 每次返回前清空旧响应,只保留当前这次响应。
             response.CommandsVersion = CommandRegistry.Version;
             s_Channel.WriteResponse(response);
         }

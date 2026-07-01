@@ -1,7 +1,26 @@
 # Unity Agent Bridge — 驱动协议(面向 AI Agent)
 
-本文档给**驱动桥接的 AI Agent**(主要 Claude Code)。读完即可通过文件操作让 Unity 编辑器执行命令。
-包开发 / 写扩展命令见 `README.md`。
+## 你的职责
+
+**你是驱动这座桥的 AI Agent(主要 Claude Code)。** 本工程接入了 Unity Agent Bridge:你可以**通过读写文件**让 Unity 编辑器在主线程执行命令——无网络、无 socket。
+
+本文档是你与 Unity 之间的**契约**。只要这个工程在,你的每一次驱动都必须遵守它。读完你就该知道:命令写去哪、响应从哪读、有哪些命令可用、出错怎么办。
+
+> 包开发 / 写扩展命令见 `README.md`;本文档只讲**怎么驱动**。
+
+## 铁律(每次驱动都必须遵守)
+
+这五条是硬性契约,任何一条违反都会导致请求丢失、被读半截、或命令集不同步。开始前请记牢:
+
+1. **原子写请求** —— 永远先写 `requests/{id}.request.json.tmp`,再 rename 成 `requests/{id}.request.json`。**绝不直接写最终名**(会被 Unity 读到半截)。
+2. **id 每次唯一** —— `{id}` 由你生成,**每条请求全新、绝不复用**(即便重试也换新 id)。
+3. **发一条、等一条、读完再发下一条** —— 不要并发堆多条请求;`responses/` 只保留最新一条响应。
+4. **启动只调一次 `list_commands` 并记住结果** —— 命令清单不在文档里写死,必须运行时发现;调一次、缓存清单 + `commandsVersion`,之后**一直用缓存,不要重复调**。
+5. **仅当命令集变了才刷新** —— 只有响应的 `commandsVersion` 与缓存不一致、装/卸/启停扩展后、或收到 `UNKNOWN_COMMAND` 时,才重调一次 `list_commands`;其余时候不重调。
+
+> ⚠️ Unity 编辑器**失焦时默认不轮询**(你写了请求也不会被处理)。若需失焦也驱动:在 Unity 开 `Window/Agent Bridge`,勾顶部「失焦不节流」。
+
+---
 
 ## 1. 通讯方式
 
@@ -14,14 +33,15 @@ Agent ↔ Unity 通过**文件**通讯,无网络。根目录 `<root>` 默认 `<U
 └── responses/   Unity 写 {id}.response.json(你读)
 ```
 
-> ⚠️ Unity 编辑器**失焦时默认不轮询**。若需失焦也驱动,在 Unity 开 `Window/Agent Bridge`、勾选顶部「失焦不节流」开关。
+一次驱动只碰两个目录:**写** `requests/`、**读** `responses/`。`processing/` 是 Unity 的认领区,你不要碰。
 
 ## 2. 发一条命令
 
-1. **原子写请求**:先写 `requests/{id}.request.json.tmp`,再 rename 成 `requests/{id}.request.json`(切勿直接写最终名——会被读到半截)。`{id}` 由你生成、**每次唯一、绝不复用**(复用旧 id 可能读到上次残留的旧响应)。
-2. **轮询响应**:读 `responses/{id}.response.json`,出现即为完成(Unity 也用 tmp→rename 原子写)。**读完不必删——清理由 Unity 端负责。**
+1. **原子写请求**(铁律 1):先写 `requests/{id}.request.json.tmp`,再 rename 成 `requests/{id}.request.json`。
+2. **轮询响应**:读 `responses/{id}.response.json`,**文件出现即为完成**(Unity 也用 tmp→rename 原子写,不会读到半截)。
+3. **读完不必删** —— 清理由 Unity 端负责。
 
-> 清理:Unity 端**每个编辑器会话、在生成首个响应前清一次** `responses/`(清掉上次会话遗留;domain reload 不重清,避免删掉刚写出未读的响应)。本会话内响应会累积但不影响读取(你用唯一 id 即可)。
+> 清理机制:Unity 端**每次写响应前都会清空** `responses/`,再写入当前 `{id}.response.json`。所以目录里**只有最新一次响应**——这正是铁律 3「发一条、等一条」的原因:上一条没读走,发下一条就会把它冲掉。
 
 **请求** `{id}.request.json`:
 ```json
@@ -36,24 +56,25 @@ Agent ↔ Unity 通过**文件**通讯,无网络。根目录 `<root>` 默认 `<U
 ```
 
 字段:
+- `id`:必须与你发的请求一致——**用它对上号**,别用文件顺序判断。
 - `status`:`"ok"` | `"error"`。`ok` 时 `error=null`;`error` 时 `result=null`。
 - `result`:命令结果(`ok` 时)。
 - `error`:`{ "code": string, "message": string }`(`error` 时)。
-- `commandsVersion`:命令集内容 hash,**每条响应都有**(见第 4 节)。
+- `commandsVersion`:命令集内容 hash,**每条响应都有**——每次读到都拿它对照缓存(铁律 5)。
 
 ## 3. 错误码
 
-| code | 含义 |
-|---|---|
-| `UNKNOWN_COMMAND` | command 未注册(命令集可能变了 → 重新发现) |
-| `INVALID_PARAMS` | params 缺字段 / 类型错 |
-| `HANDLER_EXCEPTION` | 命令执行抛异常(message 带堆栈摘要) |
-| `INTERRUPTED` | 请求处理中途遇编辑器重编译(domain reload),需重发 |
-| `INTERNAL_ERROR` | 框架内部错误(如请求 JSON 解析失败) |
+| code | 含义 | 你该怎么做 |
+|---|---|---|
+| `UNKNOWN_COMMAND` | command 未注册(命令集可能变了) | 重调 `list_commands` 刷新缓存,再重试 |
+| `INVALID_PARAMS` | params 缺字段 / 类型错 | 对照 `paramsSchema` 修正参数后重发 |
+| `HANDLER_EXCEPTION` | 命令执行抛异常(message 带堆栈摘要) | 读 message 定位;非临时问题别盲目重试 |
+| `INTERRUPTED` | 处理中途遇编辑器重编译(domain reload) | 换新 id 重发同一请求 |
+| `INTERNAL_ERROR` | 框架内部错误(如请求 JSON 解析失败) | 检查你写的 JSON 是否合法 |
 
-handler 可返回自有错误码(如 `MENU_NOT_FOUND`)。
+handler 也可返回自有错误码(如 `MENU_NOT_FOUND`),含义见该命令 `description`。
 
-## 4. 发现可用命令(重要)
+## 4. 发现可用命令(务必先做)
 
 命令清单**不写死在文档里**——它随代码 / 装的扩展变。用 `list_commands` 运行时获取:
 
@@ -65,12 +86,12 @@ handler 可返回自有错误码(如 `MENU_NOT_FOUND`)。
   ],
   "commandsVersion": "1c5bb3655cdf454c" }
 ```
-每条 `{ command, description, paramsSchema }`;`paramsSchema` 是该命令参数的 JSON Schema(命令未声明则 null)。
+每条 `{ command, description, paramsSchema }`;`paramsSchema` 是该命令参数的 JSON Schema(命令未声明参数则为 null)。**发任何命令前,先从缓存里查它的 schema 拼参数。**
 
-**缓存与刷新规矩**:
-- **启动时调一次 `list_commands`,缓存命令清单 + `commandsVersion`**。
-- 普通命令用缓存,**不要每条都重调**。
-- 以下任一**刷新一次**(重调 `list_commands`):
+**缓存与刷新规矩**(即铁律 4、5):
+- **启动时调一次 `list_commands`**,缓存命令清单 + `commandsVersion`,**整个 session 一直用这份缓存**。
+- 这是**唯一常规的一次调用**——之后每条命令都从缓存查 `paramsSchema`,**绝不因为"要发下一条命令"就重调**。
+- 只有命令集**确实变了**才重调一次(属例外,平时不会发生),触发条件三选一:
   1. 任意响应的 `commandsVersion` 与你缓存的不一致(命令集变了);
   2. 装 / 卸 / 启停了扩展;
   3. 某命令返回 `UNKNOWN_COMMAND`(缓存过期 → 刷新后重试)。
@@ -80,29 +101,41 @@ handler 可返回自有错误码(如 `MENU_NOT_FOUND`)。
 ## 5. 驱动流程一图
 
 ```
-读 CLAUDE.md 片段
-  → 启动:list_commands → 缓存 命令 + commandsVersion
-  → 发命令(.tmp→rename 写 requests/)→ 读 responses/{id}
-  → 响应 commandsVersion == 缓存? 是→下一条 / 否→重新 list_commands
-  → 遇 UNKNOWN_COMMAND → 重新 list_commands 后重试
+读本文档(记牢铁律)
+  → 启动:list_commands → 缓存 命令清单 + commandsVersion
+  → 循环每条命令:
+      查缓存拿 schema 拼参数
+      → 写请求(.tmp → rename 到 requests/)
+      → 轮询读 responses/{id}.response.json(按 id 对号)
+      → 读响应.commandsVersion:
+            == 缓存? → 处理 result / 继续下一条
+            != 缓存? → 重新 list_commands 刷新,再继续
+      → 遇 UNKNOWN_COMMAND → 重新 list_commands 后换新 id 重试
 ```
 
 ## 6. 写一个新命令
 
-写一个 `ICommandHandler` 实现类放进被编译的程序集即自动注册(无需特性)。`ICommandHandler` 含 `Command`/`Description`/`Group`/`CanDisable`/`Execute`/`GetParamsSchema` 六个成员——`Command` 命令名(唯一)、`Description` 描述(供 list_commands)、`Group` 功能分组(管理器窗口按它分组)、`CanDisable` 能否被禁用(`false` 则锁定常开,如 ping/list_commands)、`GetParamsSchema()` 参数 schema(无参返回空 `{}`,`new JObject()`)。详见 `README.md` 的「扩展」一节。
+写一个 `ICommandHandler` 实现类放进被编译的程序集即自动注册(无需特性)。六个成员:`Command` 命令名(唯一)、`Description` 描述(供 `list_commands`)、`Group` 功能分组(管理器窗口按它分组)、`CanDisable` 能否被禁用(`false` 则锁定常开,如 ping / list_commands)、`Execute` 执行、`GetParamsSchema()` 参数 schema(无参返回空 `{}`,即 `new JObject()`)。详见 `README.md` 的「扩展」一节。
 
 ---
 
 ## 7. 复制到你的项目 CLAUDE.md
 
-把下面这段粘进集成方项目的 `CLAUDE.md`,让 AI 一开 session 就知道怎么驱动(**只放稳定元知识,不放命令清单**):
+把下面这段粘进集成方项目的 `CLAUDE.md`,让 AI 一开 session 就知道怎么驱动、且**始终遵守铁律**(**只放稳定元知识,不放命令清单**):
 
 ```markdown
-## Unity Agent Bridge
-本工程接入了 Unity Agent Bridge:AI 可通过文件驱动 Unity 编辑器执行命令。
-- 写请求:先写 `<root>/requests/{id}.request.json.tmp` 再 rename 成 `.request.json`(原子);`<root>` 默认 `<工程>/AgentBridge/`。
-- 读响应:轮询 `<root>/responses/{id}.response.json`。
-- **先调 `list_commands`** 拿可用命令并缓存(含 `commandsVersion`)。之后任意响应的 `commandsVersion` 与缓存不一致、或装/卸扩展后、或遇 `UNKNOWN_COMMAND`,就重新 `list_commands`。
-- 完整协议见 Unity 包内 `AGENT.md`。
-- (可选)失焦也要驱动时,在 Unity 开 `Window/Agent Bridge` 勾顶部「失焦不节流」。
+## Unity Agent Bridge(驱动 Unity 编辑器)
+本工程接入了 Unity Agent Bridge:你(AI)可通过文件驱动 Unity 编辑器执行命令。完整协议见 Unity 包内 `AGENT.md`。
+
+**第一件事,优先于一切:先调一次 `list_commands`,然后记住结果。**
+可用命令**不在本文档里、也不写死**——只能靠 `list_commands` 在运行时发现。所以本 session 里,**在发任何其它命令之前,先成功调用一次 `list_commands`**,把命令清单缓存下来(含 `commandsVersion` 与每条的 `paramsSchema`)。
+**只调这一次**:之后每条命令都从这份缓存里查 `paramsSchema` 拼参数,**不要再重复调 `list_commands`**。重调只发生在极少数"命令集变了"的情况——见下面第 5 条。没跑过 `list_commands` 就凭记忆/猜测发命令 = 错误做法。
+
+其余铁律(始终遵守):
+1. 原子写:先写 `<root>/requests/{id}.request.json.tmp` 再 rename 成 `.request.json`;`<root>` 默认 `<工程>/AgentBridge/`。
+2. `{id}` 每条请求唯一、绝不复用(重试也换新 id)。
+3. 发一条、等一条:轮询 `<root>/responses/{id}.response.json`,读完再发下一条(该目录只保留最新一条响应)。
+4. 发命令前,必按缓存里的 `paramsSchema` 拼参数(见上「第一件事」)。
+5. 任意响应的 `commandsVersion` 与缓存不一致、或装/卸扩展后、或遇 `UNKNOWN_COMMAND`,**立即重新 `list_commands`** 再继续。
+（可选）失焦也要驱动时,在 Unity 开 `Window/Agent Bridge` 勾顶部「失焦不节流」。
 ```

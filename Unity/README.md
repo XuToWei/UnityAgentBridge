@@ -9,7 +9,7 @@
 UPM 通过 git URL 安装(本包在仓库子目录 `Unity/`):
 
 ```
-https://github.com/<owner>/UnityAgentBridge.git?path=/Unity
+https://github.com/XuToWei/UnityAgentBridge.git?path=Unity
 ```
 
 依赖 `com.unity.nuget.newtonsoft-json`(已声明在 package.json,UPM 自动拉取)。

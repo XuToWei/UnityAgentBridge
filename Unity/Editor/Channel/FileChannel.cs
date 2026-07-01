@@ -120,7 +120,7 @@ namespace AgentBridge
             }
         }
 
-        /// <summary>清空 responses/ 中的全部文件(会话级残留清理,由 host 每会话调一次)。</summary>
+        /// <summary>清空 responses/ 中的全部文件(由 host 在每次写响应前调用)。</summary>
         public void ClearResponses()
         {
             foreach (var file in Directory.GetFiles(ResponsesDir))

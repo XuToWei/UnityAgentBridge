@@ -69,11 +69,10 @@ Discover the live set at runtime via `list_commands` — it reflects exactly wha
 
 This repo's package lives in the `Unity/` subfolder (`com.unityagentbridge.core`, requires **Unity 2021.3+** and `com.unity.nuget.newtonsoft-json`).
 
-- **Embed locally**: copy `Unity/` into your project's `Packages/UnityAgentBridge/`, or add to `Packages/manifest.json`:
-  ```json
-  "com.unityagentbridge.core": "file:../../UnityAgentBridge/Unity"
+- **Git (UPM)**: add via Package Manager → *Add package from git URL*:
   ```
-- **Git (UPM)**: add via Package Manager → *Add package from git URL* using this repo URL with `?path=Unity`.
+  https://github.com/XuToWei/UnityAgentBridge.git?path=Unity
+  ```
 
 The host auto-starts on load. The bridge root defaults to `<project>/AgentBridge/` (`requests/` `processing/` `responses/`).
 
@@ -99,12 +98,6 @@ public sealed class SayHelloHandler : ICommandHandler
 ```
 
 `ICommandHandler` implementations are auto-registered via reflection / `TypeCache` — no manual wiring, no attribute. Members: `Command` (unique name), `Description`, `Group` (window grouping), `CanDisable` (false locks it on), `Execute`, `GetParamsSchema`. Throw `CommandException(code, message)` to return a typed error.
-
-### Testing
-
-EditMode tests live in `Unity/Tests/Editor/` (`AgentBridge.Editor.Tests` asmdef). They cover the file round-trip end-to-end (driving the real host via `[UnityTest]` + `EditorApplication.update`), the dispatch framework, every built-in command, and the command manager. Run them from a host project's **Test Runner ▸ EditMode**.
-
-> Convention: every new command (`ICommandHandler`) ships with an EditMode test.
 
 ---
 
@@ -169,11 +162,10 @@ agent <── AgentBridge/responses/{id}.response.json
 
 本仓库的包在 `Unity/` 子目录(`com.unityagentbridge.core`,需 **Unity 2021.3+** 与 `com.unity.nuget.newtonsoft-json`)。
 
-- **本地内嵌**:把 `Unity/` 拷进工程的 `Packages/UnityAgentBridge/`,或在 `Packages/manifest.json` 加:
-  ```json
-  "com.unityagentbridge.core": "file:../../UnityAgentBridge/Unity"
+- **Git(UPM)**:Package Manager → *Add package from git URL*:
   ```
-- **Git(UPM)**:Package Manager → *Add package from git URL*,用本仓库 URL 加 `?path=Unity`。
+  https://github.com/XuToWei/UnityAgentBridge.git?path=Unity
+  ```
 
 主机随加载自启。桥接根目录默认 `<工程>/AgentBridge/`(`requests/` `processing/` `responses/`)。
 
@@ -199,12 +191,6 @@ public sealed class SayHelloHandler : ICommandHandler
 ```
 
 `ICommandHandler` 实现经反射 / `TypeCache` 自动注册,无需手动接线、无需特性。成员:`Command`(唯一名)、`Description`、`Group`(窗口分组)、`CanDisable`(false 则锁定常开)、`Execute`、`GetParamsSchema`。抛 `CommandException(code, message)` 返回带类型的错误。
-
-### 测试
-
-EditMode 测试在 `Unity/Tests/Editor/`(`AgentBridge.Editor.Tests` asmdef),覆盖文件往返端到端(用 `[UnityTest]` + `EditorApplication.update` 驱动真实主机)、分发框架、全部内置命令、命令管理器。在宿主工程的 **Test Runner ▸ EditMode** 里跑。
-
-> 规约:每个新增命令(`ICommandHandler`)都随附一份 EditMode 测试。
 
 ---
 
