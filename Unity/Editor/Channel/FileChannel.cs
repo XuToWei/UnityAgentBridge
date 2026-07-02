@@ -32,6 +32,28 @@ namespace AgentBridge
             Directory.CreateDirectory(RequestsDir);
             Directory.CreateDirectory(ProcessingDir);
             Directory.CreateDirectory(ResponsesDir);
+            EnsureGitIgnore();
+        }
+
+        /// <summary>
+        /// 在根目录写 .gitignore(内容为 "*"),让整个通讯目录连同请求/响应临时文件都被 git 忽略——
+        /// 这些是运行时产物,不应进版本库。已存在则不动(尊重用户手改)。
+        /// </summary>
+        private void EnsureGitIgnore()
+        {
+            var path = Path.Combine(RootDir, ".gitignore");
+            if (File.Exists(path))
+            {
+                return;
+            }
+            try
+            {
+                File.WriteAllText(path, "*" + Environment.NewLine);
+            }
+            catch (IOException)
+            {
+                /* 写不成不影响桥接功能,忽略 */
+            }
         }
 
         /// <summary>
