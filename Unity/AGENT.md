@@ -132,7 +132,7 @@ handler 也可返回自有错误码(如 `MENU_NOT_FOUND`),含义见该命令 `de
 
 本工程接入了 Unity Agent Bridge:**任何需要让 Unity 编辑器做的事**(查场景、改物体、建资源、跑编译……),你(AI)都必须通过"写请求文件 / 读响应文件"来完成,不能凭空假设 Unity 状态,也不能跳过这套流程直接改工程文件。完整协议见 Unity 包内 `AGENT.md`。
 
-`<root>` 默认 `<工程>/.agentbridge/`,下有 `requests/`(你写)、`responses/`(你读)。
+`<root>` 为本 Unity 工程下**已存在**的 `.agentbridge/`。启动时直接查找 `.agentbridge/`(若当前目录是多个 Unity 工程的父目录,到各工程子目录下找),且必须包含 `requests/`、`processing/`、`responses/`。找不到就报错并停止;不要自行创建目录或猜路径。
 
 ### 第 0 步(每个 session 开头,只做一次)
 在发任何其它命令**之前**,先发一次 `list_commands`,把返回的命令清单连同 `commandsVersion`、每条的 `paramsSchema` **记在本 session 里**。可用命令不在文档里、也不写死,只能这样运行时发现。**没做过第 0 步就发别的命令 = 错误。** 之后一直用这份缓存,不要重复调 `list_commands`(何时才需重调见文末)。
