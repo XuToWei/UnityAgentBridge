@@ -64,7 +64,7 @@ Discover the live set at runtime via `list_commands` — it reflects exactly wha
 
 ## Install
 
-This repo's package lives in the `Unity/` subfolder (`com.unityagentbridge.core`, requires **Unity 2021.3+** and `com.unity.nuget.newtonsoft-json`).
+This repo's package lives in the `Unity/` subfolder (`me.xw.unityagentbridge`, requires **Unity 2021.3+** and `com.unity.nuget.newtonsoft-json`).
 
 - **Git (UPM)**: add via Package Manager → *Add package from git URL*:
   ```

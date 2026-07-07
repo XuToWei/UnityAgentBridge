@@ -64,7 +64,7 @@ agent <── .agentbridge/responses/{id}.response.json
 
 ## 安装
 
-本仓库的包在 `Unity/` 子目录(`com.unityagentbridge.core`,需 **Unity 2021.3+** 与 `com.unity.nuget.newtonsoft-json`)。
+本仓库的包在 `Unity/` 子目录(`me.xw.unityagentbridge`,需 **Unity 2021.3+** 与 `com.unity.nuget.newtonsoft-json`)。
 
 - **Git(UPM)**:Package Manager → *Add package from git URL*:
   ```

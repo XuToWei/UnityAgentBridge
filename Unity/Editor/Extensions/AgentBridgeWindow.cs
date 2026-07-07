@@ -12,7 +12,7 @@ namespace AgentBridge
     /// </summary>
     public sealed class AgentBridgeWindow : EditorWindow
     {
-        private const string PackageName = "com.unityagentbridge.core";
+        private const string PackageName = "me.xw.unityagentbridge";
         private const string MarkdownBlockStart = "<!-- BEGIN UNITY_AGENT_BRIDGE -->";
         private const string MarkdownBlockEnd = "<!-- END UNITY_AGENT_BRIDGE -->";
         private const float ListLeadingSpaceWidth = 2f;
@@ -985,7 +985,7 @@ namespace AgentBridge
             var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssetPath("Packages/" + PackageName);
             if (packageInfo == null)
             {
-                error = "未找到 Unity Agent Bridge 包路径。请确认包名仍为 com.unityagentbridge.core，且当前窗口运行在该包已安装的项目中。";
+                error = "未找到 Unity Agent Bridge 包路径。请确认包名仍为 me.xw.unityagentbridge，且当前窗口运行在该包已安装的项目中。";
                 return false;
             }
 
