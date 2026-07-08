@@ -5,7 +5,7 @@ using Newtonsoft.Json.Linq;
 namespace AgentBridge
 {
     /// <summary>
-    /// Unity → Agent 响应信封。对应 file-bridge roadmap 4.1。
+    /// Unity → Agent 的响应信封。
     /// 文件名约定 responses/{id}.response.json。
     /// status=ok 时 error 为 null;status=error 时 result 为 null。
     /// </summary>
@@ -16,7 +16,7 @@ namespace AgentBridge
         [JsonProperty("status")] public string Status { get; set; }
         [JsonProperty("result")] public JToken Result { get; set; }
         [JsonProperty("error")] public ErrorInfo Error { get; set; }
-        [JsonProperty("commandsVersion")] public string CommandsVersion { get; set; } // 由 AgentBridgeHost 写响应前盖(见 4.7)
+        [JsonProperty("commandsVersion")] public string CommandsVersion { get; set; } // host 写响应前盖当前命令集版本
         [JsonProperty("timestamp")] public string Timestamp { get; set; }
 
         public static Response MakeOk(string id, object result)

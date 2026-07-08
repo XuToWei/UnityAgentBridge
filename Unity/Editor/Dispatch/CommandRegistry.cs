@@ -9,11 +9,10 @@ using UnityEngine;
 namespace AgentBridge
 {
     /// <summary>
-    /// 命令注册表(M3)。反射扫描已加载程序集中实现 ICommandHandler 的具体类,实例化后按 Command 名建索引。
-    /// 命令名重复 → 拒绝注册并记错误日志(不静默覆盖)。
-    /// 这是 extension-manager 的对接点:扩展重编译后其 handler 在此自动出现。
-    /// 同时收集每命令的描述/参数 schema(自描述),并算命令集内容 hash(Version)。
-    /// 对应 file-bridge roadmap 4.3 / 4.7。
+    /// 命令注册表。反射扫描已加载程序集中实现 ICommandHandler 的具体类,实例化后按 Command 名建索引。
+    /// 命令名重复时拒绝注册并记录错误日志,避免静默覆盖。
+    /// 扩展重编译后,新的 handler 会在下次重建时自动出现。
+    /// 同时收集每个命令的描述和参数 schema,并计算可见命令集的内容版本。
     /// </summary>
     public static class CommandRegistry
     {
@@ -23,8 +22,8 @@ namespace AgentBridge
         // 已注册命令的元数据,按命令名排序(决定 Version hash 的稳定性)。
         private static readonly List<CommandInfo> s_Infos = new List<CommandInfo>();
 
-        // 被 extension-manager 禁用的命令名(隐藏式禁用):仍注册,但从 list_commands/Version 剔除、dispatch 拒调。
-        // 进程内状态——domain reload 后由 extension-manager Reapply 重建(对应 extension-manager 4.4/4.6)。
+        // 被命令管理器禁用的命令名:仍注册,但从 list_commands/Version 剔除,dispatch 拒调。
+        // 这是进程内状态,domain reload 后由 CommandToggle.Reapply 从 EditorPrefs 重建。
         private static readonly HashSet<string> s_Disabled = new HashSet<string>(StringComparer.Ordinal);
 
         // 声明 CanDisable=false 的命令名(协议刚需,不可被禁用)。Rebuild 时由 handler 收集。
@@ -69,7 +68,7 @@ namespace AgentBridge
             return VisibleInfos();
         }
 
-        /// <summary>设置禁用命令名单(由 extension-manager 调用),并重算 Version。</summary>
+        /// <summary>设置禁用命令名单,并重算 Version。</summary>
         public static void SetDisabledCommands(IEnumerable<string> names)
         {
             if (!s_Built)

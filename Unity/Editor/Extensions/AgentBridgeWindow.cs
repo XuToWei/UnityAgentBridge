@@ -7,8 +7,8 @@ using UnityEngine;
 namespace AgentBridge
 {
     /// <summary>
-    /// AgentBridge 控制窗口(命令管理器 EM4)。顶部复选框启停桥接 + 失焦节流;命令按 ICommandHandler.Group
-    /// 功能分组,用多选下拉筛选要显示的组;逐命令打勾启停(CommandToggle,CanDisable=false 的命令锁定)。
+    /// AgentBridge 控制窗口。顶部工具条负责启停桥接、切换失焦节流和刷新命令列表。
+    /// 命令页按 ICommandHandler.Group 分组筛选,并允许逐命令启停;CanDisable=false 的命令会锁定。
     /// </summary>
     public sealed class AgentBridgeWindow : EditorWindow
     {

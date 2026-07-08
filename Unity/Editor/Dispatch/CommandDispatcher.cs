@@ -4,8 +4,8 @@ using Newtonsoft.Json.Linq;
 namespace AgentBridge
 {
     /// <summary>
-    /// 分发器(M3)。给定已解析 Request 返回 Response;永不抛异常,内部异常一律转 error 响应。
-    /// 每个被认领的请求必有一份响应。对应 file-bridge roadmap 4.3。
+    /// 将已解析的 Request 分发给对应命令处理器,并把所有异常统一转换为 error 响应。
+    /// 每个被认领的请求都必须产生一份响应。
     /// </summary>
     public static class CommandDispatcher
     {

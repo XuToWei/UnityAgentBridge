@@ -3,7 +3,7 @@ using Newtonsoft.Json;
 
 namespace AgentBridge
 {
-    /// <summary>仓库根 `extension.json` 的模型。对应 extension-manager roadmap 4.1。</summary>
+    /// <summary>扩展根目录 `extension.json` 的数据模型。</summary>
     public sealed class ExtensionManifest
     {
         [JsonProperty("id")] public string Id { get; set; }                 // 唯一,小写字母/数字/连字符,= 安装目录名

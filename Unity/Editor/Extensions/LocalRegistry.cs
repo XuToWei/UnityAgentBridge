@@ -5,8 +5,8 @@ using Newtonsoft.Json;
 namespace AgentBridge
 {
     /// <summary>
-    /// 本地已装扫描(命令管理器 EM3)。扫 Assets/AgentBridgeExtensions/* 读 manifest,
-    /// 供命令→扩展归属(CommandCatalog)与卸载用。启停态不在此(归全局禁用名单 CommandToggle)。
+    /// 扫描本地已安装扩展:读取 Assets/AgentBridgeExtensions/*/extension.json。
+    /// 结果用于判断命令归属和卸载目标;启停状态由 CommandToggle 统一管理。
     /// </summary>
     public static class LocalRegistry
     {

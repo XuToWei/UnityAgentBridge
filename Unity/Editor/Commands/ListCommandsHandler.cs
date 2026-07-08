@@ -4,8 +4,8 @@ using Newtonsoft.Json.Linq;
 namespace AgentBridge
 {
     /// <summary>
-    /// 内置元命令 list_commands(M5 / 4.7)。返回当前所有命令的 名字+描述+参数 schema + commandsVersion。
-    /// 它自己也是注册命令,故出现在自己的清单里。是 AI 发现可用命令的入口。
+    /// 内置元命令,返回当前可用命令的名称、描述、参数 schema 和命令集版本。
+    /// AI 可先调用它来发现当前 Unity 侧支持哪些命令。
     /// </summary>
     public sealed class ListCommandsHandler : ICommandHandler
     {

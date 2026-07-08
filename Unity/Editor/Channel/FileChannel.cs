@@ -5,8 +5,8 @@ using Newtonsoft.Json;
 namespace AgentBridge
 {
     /// <summary>
-    /// 文件通讯物理层(M2)。负责目录布局、原子写、请求认领、响应产出。平台无关。
-    /// 对应 file-bridge roadmap 4.2。
+    /// 文件通讯物理层,负责目录布局、原子写、请求认领和响应产出。
+    /// 不依赖 Unity API,便于在编辑器外测试文件协议。
     /// </summary>
     public sealed class FileChannel
     {

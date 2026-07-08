@@ -2,7 +2,7 @@ using Newtonsoft.Json;
 
 namespace AgentBridge
 {
-    /// <summary>引用一个组件。对应 file-bridge roadmap 4.5。inspection 与 mutation 共享。</summary>
+    /// <summary>指向某个 GameObject 上指定类型、指定序号的组件。</summary>
     public sealed class ComponentRef
     {
         [JsonProperty("object")] public ObjectRef Object { get; set; }

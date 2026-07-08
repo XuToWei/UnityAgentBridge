@@ -4,7 +4,7 @@ using Newtonsoft.Json.Linq;
 namespace AgentBridge
 {
     /// <summary>
-    /// Agent → Unity 请求信封。对应 file-bridge roadmap 4.1。
+    /// Agent → Unity 的请求信封。
     /// 文件名约定 requests/{id}.request.json。
     /// </summary>
     public sealed class Request

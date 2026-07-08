@@ -6,9 +6,9 @@ using UnityEngine;
 namespace AgentBridge
 {
     /// <summary>
-    /// 命令启停(命令管理器 EM2)。全局禁用名单存 EditorPrefs(key 带工程标识,避免跨工程串),
-    /// 覆盖内置+扩展所有命令。改完推给 file-bridge CommandRegistry.SetDisabledCommands;
-    /// domain reload 后由 CommandToggleBootstrap 重应用。取代 ext-enable-disable 的 per-extension meta。
+    /// 命令启停状态。全局禁用名单存 EditorPrefs,key 带工程标识以避免跨工程串扰。
+    /// 禁用名单覆盖内置和扩展命令,改动后同步到 CommandRegistry。
+    /// domain reload 后由 CommandToggleBootstrap 重应用。
     /// </summary>
     public static class CommandToggle
     {
@@ -53,7 +53,7 @@ namespace AgentBridge
             Reapply();
         }
 
-        /// <summary>从 EditorPrefs 重建禁用名单并推给 file-bridge。domain reload 后调用。</summary>
+        /// <summary>从 EditorPrefs 重建禁用名单并同步到 CommandRegistry。domain reload 后调用。</summary>
         public static void Reapply()
         {
             CommandRegistry.SetDisabledCommands(Disabled());

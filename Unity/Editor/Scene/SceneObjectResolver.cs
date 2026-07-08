@@ -6,8 +6,8 @@ using UnityEngine.SceneManagement;
 namespace AgentBridge
 {
     /// <summary>
-    /// 把 ObjectRef/ComponentRef 解析成 GameObject/Component(共享,inspection 与 mutation 复用)。
-    /// 解析规则:instanceId 优先,否则按 path 跨所有已加载场景查。对应 file-bridge roadmap 4.5。
+    /// 把 ObjectRef/ComponentRef 解析成 Unity 对象,供查询和修改命令复用。
+    /// 解析规则:instanceId 优先;未命中或未提供时,按层级路径在所有已加载场景中查找。
     /// </summary>
     public static class SceneObjectResolver
     {

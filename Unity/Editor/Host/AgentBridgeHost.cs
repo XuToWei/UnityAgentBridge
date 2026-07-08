@@ -5,9 +5,8 @@ using UnityEngine;
 namespace AgentBridge
 {
     /// <summary>
-    /// Editor 宿主(M4)。[InitializeOnLoad] 在编辑器加载及每次 domain reload 后重挂轮询。
-    /// 轮询在 EditorApplication.update(主线程)内同步分发 → handler 天然主线程。
-    /// 对应 file-bridge roadmap 4.4。
+    /// Unity Editor 侧桥接宿主。[InitializeOnLoad] 在编辑器加载及每次 domain reload 后重挂轮询。
+    /// 轮询在 EditorApplication.update 主线程内同步分发,因此命令处理器天然运行在主线程。
     /// </summary>
     [InitializeOnLoad]
     public static class AgentBridgeHost
@@ -111,7 +110,7 @@ namespace AgentBridge
             }
         }
 
-        // 单点盖戳:任何响应写出前统一盖 commandsVersion,覆盖正常/错误/INTERRUPTED 全路径(4.7)。
+        // 写响应前统一盖 commandsVersion,覆盖正常、错误和中断恢复等所有路径。
         private static void WriteStamped(Response response)
         {
             s_Channel.ClearResponses(); // 每次返回前清空旧响应,只保留当前这次响应。

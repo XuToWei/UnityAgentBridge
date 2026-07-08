@@ -2,7 +2,7 @@ using System.Collections.Generic;
 
 namespace AgentBridge
 {
-    /// <summary>本地扫描出的一条已装扩展。对应 extension-manager roadmap 4.5。</summary>
+    /// <summary>本地扫描出的一条已安装扩展记录。</summary>
     public sealed class InstalledExtension
     {
         public string Id { get; set; }

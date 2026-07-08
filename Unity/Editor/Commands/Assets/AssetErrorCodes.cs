@@ -1,6 +1,6 @@
 namespace AgentBridge
 {
-    /// <summary>资源操作 handler 自有错误码(file-bridge 4.1 允许)。域内私有,仅 Commands/Assets/ 使用。</summary>
+    /// <summary>资源操作相关错误码,仅 Commands/Assets/ 使用。</summary>
     public static class AssetErrorCodes
     {
         public const string InvalidAssetPath = "INVALID_ASSET_PATH";       // 写路径不在 Assets/ 下 / 非法

@@ -2,7 +2,7 @@ using Newtonsoft.Json.Linq;
 
 namespace AgentBridge
 {
-    /// <summary>单条命令的元数据,供 list_commands 输出 + commandsVersion hash 输入。对应 file-bridge roadmap 4.7。</summary>
+    /// <summary>单条命令的元数据,用于 list_commands 输出和命令集版本计算。</summary>
     public struct CommandInfo
     {
         public string Command;

@@ -4,8 +4,8 @@ using UnityEngine;
 namespace AgentBridge
 {
     /// <summary>
-    /// 内置命令 ping(M5)。打通端到端的最小闭环,也是 handler 框架的示范:
-    /// 写一个类实现 ICommandHandler,放进被编译的程序集即生效。
+    /// 内置连通性测试命令。用于验证 Agent → Unity → Agent 的端到端链路。
+    /// 也是 ICommandHandler 最小实现示例。
     /// </summary>
     public sealed class PingHandler : ICommandHandler
     {

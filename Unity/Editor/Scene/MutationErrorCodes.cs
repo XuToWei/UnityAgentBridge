@@ -1,6 +1,6 @@
 namespace AgentBridge
 {
-    /// <summary>写操作 handler 自有错误码(file-bridge 4.1 允许 handler 追加自有码)。与 RefErrorCodes 并列。</summary>
+    /// <summary>场景写操作相关错误码。</summary>
     public static class MutationErrorCodes
     {
         public const string PropertyNotFound = "PROPERTY_NOT_FOUND";       // propertyPath 在组件上不存在

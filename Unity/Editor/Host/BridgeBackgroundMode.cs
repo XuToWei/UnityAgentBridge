@@ -6,7 +6,7 @@ using UnityEngine;
 namespace AgentBridge
 {
     /// <summary>
-    /// 失焦后台运行开关(M4)。Unity 编辑器失焦时会节流主循环,导致 EditorApplication.update
+    /// 失焦后台运行开关。Unity 编辑器失焦时会节流主循环,导致 EditorApplication.update
     /// 近乎停摆、桥接不再轮询。把 Interaction Mode 设为 No Throttling(idle=0)可让编辑器
     /// 失焦也持续运行。
     ///
@@ -15,8 +15,8 @@ namespace AgentBridge
     /// </summary>
     public static class BridgeBackgroundMode
     {
-        private const string IdleKey = "ApplicationIdleTime";
-        private const string ModeKey = "InteractionMode";
+        private const string IdleKey = "AgentBridge.ApplicationIdleTime";
+        private const string ModeKey = "AgentBridge.InteractionMode";
 
         /// <summary>当前是否为 No Throttling(失焦不节流)。供窗口 Toggle 反映状态。</summary>
         public static bool IsNoThrottling => EditorPrefs.GetInt(IdleKey, 4) == 0;
