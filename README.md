@@ -6,18 +6,19 @@
 
 ---
 
-Unity Agent Bridge is an Editor-only Unity package that exposes the Unity Editor to an external AI agent through **file-based IPC**. The agent writes a request JSON file; a polling host inside the Editor claims it, runs the matching command on the main thread, and writes a response JSON file back. No sockets, no native plugins — just files.
+Unity Agent Bridge is an Editor-only Unity package that exposes the Unity Editor to an external AI agent through **file-based IPC**. The agent writes a request JSON file; a polling host inside the Editor claims the latest final request, discards older pending requests, runs the matching command on the main thread, and writes a response JSON file back. No sockets, no native plugins — just files.
 
 ## Why file-IPC
 
 - **Zero networking** — works across any process that can read/write a folder (CLI agent, script, another app).
-- **Crash-safe** — atomic write (`*.tmp` → rename) + single-claim (`requests → processing` atomic rename); a request is processed at most once.
+- **Crash-safe** — atomic write (`*.tmp` → rename) + single latest-claim (`requests → processing` atomic rename); stale pending requests are discarded and a claimed request is processed at most once.
 - **Main-thread execution** — handlers run inside `EditorApplication.update`, so they can call any Unity API directly.
 
 ## How it works
 
 ```
 agent ──> .agentbridge/requests/{id}.request.json
+                      │  (latest final request only; older pending requests discarded)
                       │  (atomic claim: rename to processing/)
         Editor host (EditorApplication.update polling)
                       │  dispatch → handler on main thread

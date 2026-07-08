@@ -55,5 +55,6 @@ public sealed class MyHandler : ICommandHandler
 3. **handler 异常**:临时加一个 `Execute` 抛 `new System.Exception("boom")` 的测试 handler(验完删除,勿提交)→ 响应 `error.code=HANDLER_EXCEPTION`,message 含堆栈摘要。
 4. **半截文件**:只写 `x2.request.json.tmp` 不 rename → 无任何响应;rename 后才处理。
 5. **认领单次**:单个请求只产生一份响应,`processing/` 不残留。
-6. **domain reload 中断**:请求进入 `processing/` 后触发重编译(改任意脚本)→ 重启后该 id 收到 `error.code=INTERRUPTED`,不重复执行。
-7. **配置生效**:改 `RootDir` / `PollIntervalMs` 后行为随之变化。
+6. **最新请求优先**:同时放入多条最终 `*.request.json` → 只处理最后写入的一条,其它最终请求被删除且不产生响应;较新的 `*.request.json.tmp` 不会被认领或删除。
+7. **domain reload 中断**:请求进入 `processing/` 后触发重编译(改任意脚本)→ 重启后该 id 收到 `error.code=INTERRUPTED`,不重复执行。
+8. **配置生效**:改 `RootDir` / `PollIntervalMs` 后行为随之变化。

@@ -81,8 +81,8 @@ namespace AgentBridge
             }
             s_LastPollTime = now;
 
-            // 排空本轮当前可见的请求。
-            while (s_Channel.TryClaimNext(out var claimedPath, out var request, out var rawId))
+            // 本轮只认领最新的最终请求;旧最终请求由 FileChannel 删除。
+            if (s_Channel.TryClaimLatest(out var claimedPath, out var request, out var rawId))
             {
                 Response response;
                 if (request == null)

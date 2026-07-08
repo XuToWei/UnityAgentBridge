@@ -57,59 +57,83 @@ namespace AgentBridge
         }
 
         /// <summary>
-        /// 认领下一个请求:把 requests/ 中最早的请求文件原子 rename 到 processing/ 再解析。
-        /// rename 失败(已被认领 / 锁定)则跳过下一个。即使轮询重入也保证单次处理。
+        /// 认领最新请求:删除 requests/ 中除最新最终请求外的其它请求文件,再把最新请求原子 rename 到 processing/ 解析。
+        /// 最新按 LastWriteTimeUtc 判定;并发写入中的 .tmp 不会被触碰。rename 失败则本轮不回退处理旧请求。
         /// </summary>
         /// <param name="claimedPath">认领后在 processing/ 的路径(用于处理完释放)。</param>
         /// <param name="request">解析后的请求;解析失败为 null(调用方写 INTERNAL_ERROR)。</param>
         /// <param name="rawId">从文件名提取的 id(解析失败时作响应 id 回退)。</param>
-        public bool TryClaimNext(out string claimedPath, out Request request, out string rawId)
+        public bool TryClaimLatest(out string claimedPath, out Request request, out string rawId)
         {
             claimedPath = null;
             request = null;
             rawId = null;
 
             var files = Directory.GetFiles(RequestsDir, "*" + RequestSuffix);
-            Array.Sort(files, StringComparer.Ordinal); // 文件名近似 FIFO
+            string latest = null;
+            string latestName = null;
+            var latestTime = DateTime.MinValue;
 
-            foreach (var src in files)
+            foreach (var file in files)
             {
-                var name = Path.GetFileName(src);
-                // GetFiles 通配符在部分平台会误匹配,显式校验后缀。
+                var name = Path.GetFileName(file);
+                // GetFiles 通配符在部分平台会误匹配,显式校验后缀;临时文件(.tmp)不会进来。
                 if (!name.EndsWith(RequestSuffix, StringComparison.Ordinal))
                 {
                     continue;
                 }
 
-                var dst = Path.Combine(ProcessingDir, name);
-                try
+                var time = File.GetLastWriteTimeUtc(file);
+                if (latest == null || time > latestTime ||
+                    (time == latestTime && string.Compare(name, latestName, StringComparison.Ordinal) > 0))
                 {
-                    File.Move(src, dst); // 同卷 rename 原子;认领独占
+                    latest = file;
+                    latestName = name;
+                    latestTime = time;
                 }
-                catch (IOException)
-                {
-                    continue; // 已被认领 / 正被写入,跳过
-                }
-                catch (UnauthorizedAccessException)
-                {
-                    continue;
-                }
-
-                claimedPath = dst;
-                rawId = StripSuffix(name, RequestSuffix);
-                try
-                {
-                    var json = File.ReadAllText(dst);
-                    request = JsonConvert.DeserializeObject<Request>(json);
-                }
-                catch
-                {
-                    request = null; // 解析失败 → caller 写 INTERNAL_ERROR
-                }
-                return true;
             }
 
-            return false;
+            if (latest == null)
+            {
+                return false;
+            }
+
+            foreach (var file in files)
+            {
+                var name = Path.GetFileName(file);
+                if (name.EndsWith(RequestSuffix, StringComparison.Ordinal) &&
+                    !string.Equals(file, latest, StringComparison.Ordinal))
+                {
+                    TryDeleteFile(file);
+                }
+            }
+
+            var dst = Path.Combine(ProcessingDir, latestName);
+            try
+            {
+                File.Move(latest, dst); // 同卷 rename 原子;认领独占
+            }
+            catch (IOException)
+            {
+                return false; // 已被认领 / 正被写入;不回退处理旧请求
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return false;
+            }
+
+            claimedPath = dst;
+            rawId = StripSuffix(latestName, RequestSuffix);
+            try
+            {
+                var json = File.ReadAllText(dst);
+                request = JsonConvert.DeserializeObject<Request>(json);
+            }
+            catch
+            {
+                request = null; // 解析失败 → caller 写 INTERNAL_ERROR
+            }
+            return true;
         }
 
         /// <summary>原子写响应:先写 {id}.response.json.tmp,再 rename 成最终名。读方只认最终名。</summary>
@@ -129,17 +153,7 @@ namespace AgentBridge
         /// <summary>处理完毕删除 processing/ 中的请求文件。</summary>
         public void ReleaseProcessed(string claimedPath)
         {
-            try
-            {
-                if (!string.IsNullOrEmpty(claimedPath) && File.Exists(claimedPath))
-                {
-                    File.Delete(claimedPath);
-                }
-            }
-            catch (IOException)
-            {
-                /* 下次启动 ReclaimOrphans 会兜底 */
-            }
+            TryDeleteFile(claimedPath);
         }
 
         /// <summary>清空 responses/ 中的全部文件(由 host 在每次写响应前调用)。</summary>
@@ -147,14 +161,7 @@ namespace AgentBridge
         {
             foreach (var file in Directory.GetFiles(ResponsesDir))
             {
-                try
-                {
-                    File.Delete(file);
-                }
-                catch (IOException)
-                {
-                    /* 个别被占用则跳过,无害 */
-                }
+                TryDeleteFile(file);
             }
         }
 
@@ -168,6 +175,27 @@ namespace AgentBridge
         public string IdFromProcessingPath(string path)
         {
             return StripSuffix(Path.GetFileName(path), RequestSuffix);
+        }
+
+        private static void TryDeleteFile(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+            {
+                return;
+            }
+
+            try
+            {
+                File.Delete(path);
+            }
+            catch (IOException)
+            {
+                /* 被占用则跳过 */
+            }
+            catch (UnauthorizedAccessException)
+            {
+                /* 无权限时跳过 */
+            }
         }
 
         private static string StripSuffix(string name, string suffix)

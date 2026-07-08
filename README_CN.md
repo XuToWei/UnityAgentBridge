@@ -6,18 +6,19 @@
 
 ---
 
-Unity Agent Bridge 是一个**仅编辑器**的 Unity 包,通过**文件通讯(file-IPC)**把 Unity 编辑器暴露给外部 AI Agent。Agent 写一个请求 JSON 文件;编辑器内的轮询主机认领它、在主线程执行对应命令、再写回一个响应 JSON 文件。无 socket、无原生插件——只用文件。
+Unity Agent Bridge 是一个**仅编辑器**的 Unity 包,通过**文件通讯(file-IPC)**把 Unity 编辑器暴露给外部 AI Agent。Agent 写一个请求 JSON 文件;编辑器内的轮询主机只认领最新的最终请求、丢弃较旧的待处理请求,在主线程执行对应命令、再写回一个响应 JSON 文件。无 socket、无原生插件——只用文件。
 
 ## 为什么用文件通讯
 
 - **零网络** —— 任何能读写文件夹的进程都能接(命令行 Agent、脚本、其他程序)。
-- **抗中断** —— 原子写(`*.tmp` → rename)+ 单次认领(`requests → processing` 原子 rename),每个请求至多处理一次。
+- **抗中断** —— 原子写(`*.tmp` → rename)+ 单次最新认领(`requests → processing` 原子 rename),过期待处理请求会被丢弃,已认领的请求至多处理一次。
 - **主线程执行** —— handler 跑在 `EditorApplication.update` 回调里,可直接调任意 Unity API。
 
 ## 工作原理
 
 ```
 agent ──> .agentbridge/requests/{id}.request.json
+                      │  (只认领最新最终请求;较旧待处理请求会被丢弃)
                       │  (原子认领:rename 到 processing/)
         编辑器主机(EditorApplication.update 轮询)
                       │  分发 → 主线程上的 handler

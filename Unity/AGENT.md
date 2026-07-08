@@ -14,7 +14,7 @@
 
 1. **原子写请求** —— 永远先写 `requests/{id}.request.json.tmp`,再 rename 成 `requests/{id}.request.json`。**绝不直接写最终名**(会被 Unity 读到半截)。
 2. **id 每次唯一** —— `{id}` 由你生成,**每条请求全新、绝不复用**(即便重试也换新 id)。
-3. **发一条、等一条、读完再发下一条** —— 不要并发堆多条请求;`responses/` 只保留最新一条响应。
+3. **发一条、等一条、读完再发下一条** —— 不要并发堆多条请求;若 `requests/` 同时存在多条最终请求,Unity 只认领最新一条并删除其它请求(不会给旧请求写响应);`responses/` 也只保留最新一条响应。
 4. **启动只调一次 `list_commands` 并记住结果** —— 命令清单不在文档里写死,必须运行时发现;调一次、缓存清单 + `commandsVersion`,之后**一直用缓存,不要重复调**。
 5. **仅当命令集变了才刷新** —— 只有响应的 `commandsVersion` 与缓存不一致、装/卸/启停扩展后、或收到 `UNKNOWN_COMMAND` 时,才重调一次 `list_commands`;其余时候不重调。
 
@@ -24,7 +24,7 @@
 
 ## 1. 通讯方式
 
-Agent ↔ Unity 通过**文件**通讯,无网络。根目录 `<root>` 默认 `<UnityProject>/.agentbridge/`:
+Agent ↔ Unity 通过**文件**通讯,无网络。先定位 Unity 工程目录 `<project>`:从当前工作目录出发,检查当前目录及父级,必要时再扫描子目录,寻找**同一目录内同时存在 `Assets/` 与 `.agentbridge/`** 的目录(二者必须同级)。找到后根目录 `<root>` 就是 `<project>/.agentbridge/`;如果找不到,停止并提示“Unity 没有安装或运行 AgentBridge”,不要自己创建 `.agentbridge/`:
 
 ```
 <root>/
@@ -41,7 +41,7 @@ Agent ↔ Unity 通过**文件**通讯,无网络。根目录 `<root>` 默认 `<U
 2. **轮询响应**:读 `responses/{id}.response.json`,**文件出现即为完成**(Unity 也用 tmp→rename 原子写,不会读到半截)。
 3. **读完不必删** —— 清理由 Unity 端负责。
 
-> 清理机制:Unity 端**每次写响应前都会清空** `responses/`,再写入当前 `{id}.response.json`。所以目录里**只有最新一次响应**——这正是铁律 3「发一条、等一条」的原因:上一条没读走,发下一条就会把它冲掉。
+> 清理机制:Unity 端认领请求时只选择 `requests/` 中最新的最终 `.request.json`;其它最终请求会被删除且不会产生响应。并发写入中的 `.request.json.tmp` 会被忽略,不会被认领或删除。Unity 每次写响应前也会清空 `responses/`,再写入当前 `{id}.response.json`,所以目录里**只有最新一次响应**——这正是铁律 3「发一条、等一条」的原因:抢发会让旧请求被删除,上一条响应也可能被冲掉。
 
 **请求** `{id}.request.json`:
 ```json
@@ -132,7 +132,7 @@ handler 也可返回自有错误码(如 `MENU_NOT_FOUND`),含义见该命令 `de
 
 本工程接入了 Unity Agent Bridge:**任何需要让 Unity 编辑器做的事**(查场景、改物体、建资源、跑编译……),你(AI)都必须通过"写请求文件 / 读响应文件"来完成,不能凭空假设 Unity 状态,也不能跳过这套流程直接改工程文件。完整协议见 Unity 包内 `AGENT.md`。
 
-`<root>` 为本 Unity 工程下**已存在**的 `.agentbridge/`。启动时直接查找 `.agentbridge/`(若当前目录是多个 Unity 工程的父目录,到各工程子目录下找),且必须包含 `requests/`、`processing/`、`responses/`。找不到就报错并停止;不要自行创建目录或猜路径。
+`<root>` 为 Unity 工程下**已存在**的 `.agentbridge/`。启动时先定位 Unity 工程目录:从当前工作目录出发,检查当前目录及父级,必要时再扫描子目录,寻找**同一目录内同时存在 `Assets/` 和 `.agentbridge/`** 的目录(即 `Assets` 与 `.agentbridge` 是同级)。找到后 `<root>=<该目录>/.agentbridge/`,且必须包含 `requests/`、`processing/`、`responses/`。如果找不到这样的目录,或 `.agentbridge` 缺少这三个子目录,就停止并明确提示:**Unity 没有安装或运行 AgentBridge**;不要自行创建 `.agentbridge`、不要猜路径。
 
 ### 第 0 步(每个 session 开头,只做一次)
 在发任何其它命令**之前**,先发一次 `list_commands`,把返回的命令清单连同 `commandsVersion`、每条的 `paramsSchema` **记在本 session 里**。可用命令不在文档里、也不写死,只能这样运行时发现。**没做过第 0 步就发别的命令 = 错误。** 之后一直用这份缓存,不要重复调 `list_commands`(何时才需重调见文末)。
@@ -143,7 +143,7 @@ handler 也可返回自有错误码(如 `MENU_NOT_FOUND`),含义见该命令 `de
 3. **原子写**:先写 `<root>/requests/{id}.request.json.tmp`,**再改名**成 `<root>/requests/{id}.request.json`。**绝不能直接写最终名**(会被读到半截)。
    - Windows:`Move-Item -Force {id}.request.json.tmp {id}.request.json`
    - macOS/Linux:`mv {id}.request.json.tmp {id}.request.json`
-4. **等这一条的响应**:反复读 `<root>/responses/{id}.response.json`,直到该文件出现(约每 1 秒一次,最多等 ~30 秒;超时按失败处理)。**在读到它之前,绝不发下一条命令**——`responses/` 只保留最新一条,抢发会把你要的那条冲掉。
+4. **等这一条的响应**:反复读 `<root>/responses/{id}.response.json`,直到该文件出现(约每 1 秒一次,最多等 ~30 秒;超时按失败处理)。**在读到它之前,绝不发下一条命令**——Unity 只认领最新最终请求,抢发会让旧请求被删除且没有响应;`responses/` 也只保留最新一条。
 5. **按 id 核对并处理**:确认响应 `id` 与你发的一致;`status=="ok"` 用 `result`,`status=="error"` 看 `error.code`(如 `INVALID_PARAMS` 改参数、`INTERRUPTED` 换新 id 重发)。顺便对照响应里的 `commandsVersion`(见文末)。
 
 ### 完整示例:让 Unity 执行 ping
