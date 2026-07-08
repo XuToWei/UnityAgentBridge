@@ -49,6 +49,8 @@ agent <── .agentbridge/responses/{id}.response.json
 | `get_selection` | Currently selected GameObjects (`[]` when none) |
 | `list_assets` | Query project assets by `type` / `folder` / `query` |
 | `capture_game_view` | Capture the current Game view as PNG under `.agentbridge/screenshots`; returns file path + metadata |
+| `set_game_view_resolution` | Set the Game View to a fixed resolution, creating a custom size if needed |
+| `play_scene` | Open a specified scene by path/build index and request Play Mode |
 | `create_object` | Create empty / primitive / prefab instance (optional parent) |
 | `set_property` | Set a component property by nested path (records Undo, marks scene dirty) |
 | `delete_object` | Delete a GameObject |

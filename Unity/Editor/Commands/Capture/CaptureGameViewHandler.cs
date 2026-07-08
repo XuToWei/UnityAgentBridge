@@ -25,7 +25,7 @@ namespace AgentBridge
         public string Description =>
             "捕获当前 Game 视图为 PNG,写入 .agentbridge/screenshots,返回 path/relativePath/fileName/format/width/height/bytes";
 
-        public string Group => "Inspection";
+        public string Group => "Capture";
         public bool CanDisable => true;
 
         public object Execute(JObject @params)

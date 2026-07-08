@@ -49,6 +49,8 @@ agent <── .agentbridge/responses/{id}.response.json
 | `get_selection` | 当前选中的 GameObject(无选中返回 `[]`) |
 | `list_assets` | 按 `type` / `folder` / `query` 查工程资产 |
 | `capture_game_view` | 将当前 Game 视图捕获为 PNG,写入 `.agentbridge/screenshots`,返回文件路径和元数据 |
+| `set_game_view_resolution` | 设置 Game View 固定分辨率,必要时添加自定义尺寸 |
+| `play_scene` | 按场景路径或 Build Settings 下标打开指定场景并请求进入 Play Mode |
 | `create_object` | 创建 empty / primitive / prefab 实例(可指定父级) |
 | `set_property` | 按嵌套路径改组件属性(记录 Undo、标脏场景) |
 | `delete_object` | 删除 GameObject |

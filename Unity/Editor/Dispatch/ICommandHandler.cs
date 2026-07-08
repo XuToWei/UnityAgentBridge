@@ -13,7 +13,7 @@ namespace AgentBridge
         /// <summary>命令描述,供 list_commands 展示给 AI。无描述返回 ""。</summary>
         string Description { get; }
 
-        /// <summary>命令所属分组(供管理器界面按组显示),如 Meta/Inspection/Mutation/Assets/Compilation。</summary>
+        /// <summary>命令所属分组(供管理器界面按组显示),如 Meta/Inspection/Capture/Mutation/Assets/Compilation。</summary>
         string Group { get; }
 
         /// <summary>是否允许被命令管理器禁用。协议刚需命令(ping/list_commands)返回 false,不可禁用。</summary>
