@@ -4,12 +4,13 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using Newtonsoft.Json;
+using UnityEditor;
 using UnityEngine;
 
 namespace AgentBridge
 {
     /// <summary>
-    /// 命令注册表。反射扫描已加载程序集中实现 ICommandHandler 的具体类,实例化后按 Command 名建索引。
+    /// 命令注册表。通过 Unity TypeCache 查找实现 ICommandHandler 的具体类,实例化后按 Command 名建索引。
     /// 命令名重复时拒绝注册并记录错误日志,避免静默覆盖。
     /// 扩展重编译后,新的 handler 会在下次重建时自动出现。
     /// 同时收集每个命令的描述和参数 schema,并计算可见命令集的内容版本。
@@ -68,13 +69,9 @@ namespace AgentBridge
             return VisibleInfos();
         }
 
-        /// <summary>设置禁用命令名单,并重算 Version。</summary>
+        /// <summary>设置禁用命令名单。注册表未构建时只保存状态,避免 domain reload 立即扫描命令。</summary>
         public static void SetDisabledCommands(IEnumerable<string> names)
         {
-            if (!s_Built)
-            {
-                Rebuild();
-            }
             s_Disabled.Clear();
             if (names != null)
             {
@@ -86,7 +83,12 @@ namespace AgentBridge
                     }
                 }
             }
-            s_Version = ComputeVersion(VisibleInfos());
+
+            if (s_Built)
+            {
+                s_Disabled.ExceptWith(s_NonDisablable);
+                s_Version = ComputeVersion(VisibleInfos());
+            }
         }
 
         /// <summary>某命令当前是否被禁用。</summary>
@@ -118,13 +120,9 @@ namespace AgentBridge
             s_Infos.Clear();
             s_NonDisablable.Clear();
 
-            foreach (var type in TypeFinder.AllTypes())
+            foreach (var type in TypeCache.GetTypesDerivedFrom<ICommandHandler>())
             {
                 if (type.IsAbstract || type.IsInterface)
-                {
-                    continue;
-                }
-                if (!typeof(ICommandHandler).IsAssignableFrom(type))
                 {
                     continue;
                 }
@@ -162,6 +160,7 @@ namespace AgentBridge
             }
 
             s_Infos.Sort((a, b) => string.CompareOrdinal(a.Command, b.Command));
+            s_Disabled.ExceptWith(s_NonDisablable);
             s_Version = ComputeVersion(VisibleInfos()); // Version 基于可见集(剔除禁用),与 list_commands 一致
             s_Built = true;
         }

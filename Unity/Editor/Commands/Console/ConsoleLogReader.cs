@@ -8,7 +8,7 @@ namespace AgentBridge
     /// <summary>
     /// 只读读取编辑器 Console 面板当前的日志条目。Unity 未公开 Console API,故反射内部
     /// <c>UnityEditor.LogEntries</c> / <c>UnityEditor.LogEntry</c>(见 UnityCsReference
-    /// Editor/Mono/LogEntries.bindings.cs)。字段名/存在性按版本容错——反射失败即抛
+    /// Editor/Mono/LogEntries.bindings.cs)。反射失败即抛
     /// CommandException(CONSOLE_UNAVAILABLE),不让整个命令崩掉。
     /// </summary>
     internal static class ConsoleLogReader
@@ -42,7 +42,7 @@ namespace AgentBridge
         private static MethodInfo s_StartGettingEntries;
         private static MethodInfo s_EndGettingEntries;
         private static MethodInfo s_GetEntryInternal;
-        private static FieldInfo s_MessageField; // message(旧版可能是 condition)
+        private static FieldInfo s_MessageField;
         private static FieldInfo s_ModeField;
         private static FieldInfo s_FileField;
         private static FieldInfo s_LineField;
@@ -57,10 +57,8 @@ namespace AgentBridge
             s_Init = true;
 
             var editorAssembly = typeof(Editor).Assembly;
-            s_LogEntriesType = editorAssembly.GetType("UnityEditor.LogEntries")
-                ?? editorAssembly.GetType("UnityEditorInternal.LogEntries");
-            s_LogEntryType = editorAssembly.GetType("UnityEditor.LogEntry")
-                ?? editorAssembly.GetType("UnityEditorInternal.LogEntry");
+            s_LogEntriesType = editorAssembly.GetType("UnityEditor.LogEntries");
+            s_LogEntryType = editorAssembly.GetType("UnityEditor.LogEntry");
             if (s_LogEntriesType == null || s_LogEntryType == null)
             {
                 s_LogEntriesType = null;
@@ -73,14 +71,14 @@ namespace AgentBridge
             s_GetEntryInternal = s_LogEntriesType.GetMethod("GetEntryInternal", Flags);
 
             const BindingFlags FieldFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
-            s_MessageField = s_LogEntryType.GetField("message", FieldFlags)
-                ?? s_LogEntryType.GetField("condition", FieldFlags);
+            s_MessageField = s_LogEntryType.GetField("message", FieldFlags);
             s_ModeField = s_LogEntryType.GetField("mode", FieldFlags);
             s_FileField = s_LogEntryType.GetField("file", FieldFlags);
             s_LineField = s_LogEntryType.GetField("line", FieldFlags);
 
-            if (s_StartGettingEntries == null || s_EndGettingEntries == null
-                || s_GetEntryInternal == null || s_MessageField == null || s_ModeField == null)
+            if (s_StartGettingEntries == null || s_EndGettingEntries == null ||
+                s_GetEntryInternal == null || s_MessageField == null || s_ModeField == null ||
+                s_FileField == null || s_LineField == null)
             {
                 s_LogEntriesType = null; // 关键成员缺失 → 视为不可用
                 return false;
@@ -119,8 +117,8 @@ namespace AgentBridge
                     {
                         Message = s_MessageField.GetValue(entry) as string ?? "",
                         Type = ClassifyMode(mode),
-                        File = s_FileField != null ? s_FileField.GetValue(entry) as string ?? "" : "",
-                        Line = s_LineField != null ? (int)s_LineField.GetValue(entry) : 0
+                        File = s_FileField.GetValue(entry) as string ?? "",
+                        Line = (int)s_LineField.GetValue(entry)
                     });
                 }
             }

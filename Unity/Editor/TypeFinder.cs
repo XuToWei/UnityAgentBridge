@@ -7,8 +7,8 @@ namespace AgentBridge
 {
     /// <summary>
     /// 共享类型反射工具:跨所有已加载程序集安全枚举类型、按名+谓词查找类型。
-    /// 统一 ReflectionTypeLoadException 容错。供 CommandRegistry(枚举 handler)、
-    /// SceneObjectResolver(找 Component 类型)、AssetSupport(找 ScriptableObject 类型)复用。
+    /// 统一 ReflectionTypeLoadException 容错。供 SceneObjectResolver(找 Component 类型)、
+    /// AssetSupport(找 ScriptableObject 类型)复用。
     /// </summary>
     internal static class TypeFinder
     {

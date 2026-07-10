@@ -43,6 +43,7 @@ namespace AgentBridge
         private CommandSortColumn m_CommandSortColumn = CommandSortColumn.Name;
         private bool m_EnabledSortAscending = true;
         private bool m_NameSortAscending = true;
+        private bool m_CommandsLoaded;
         private int m_SelectedTab;
         private Vector2 m_Scroll;
         private string m_MarkdownStatus = "";
@@ -61,18 +62,19 @@ namespace AgentBridge
         [MenuItem("Window/Agent Bridge")]
         public static void Open()
         {
-            GetWindow<AgentBridgeWindow>("Agent Bridge").Rescan();
+            GetWindow<AgentBridgeWindow>("Agent Bridge");
         }
 
         private void OnEnable()
         {
             minSize = new Vector2(660f, 380f); // 保证工具条、分组与表头都有足够空间
-            Rescan();
+            m_CommandsLoaded = false;
         }
 
         private void Rescan()
         {
             m_Commands = CommandCatalog.All();
+            m_CommandsLoaded = true;
         }
 
         private void EnsureStyles()
@@ -133,9 +135,18 @@ namespace AgentBridge
                     DrawMarkdownToolSection();
                     break;
                 case 1:
+                    EnsureCommandsLoaded();
                     DrawSectionTitle("命令");
                     DrawCommandSection();
                     break;
+            }
+        }
+
+        private void EnsureCommandsLoaded()
+        {
+            if (!m_CommandsLoaded)
+            {
+                Rescan();
             }
         }
 
@@ -512,7 +523,7 @@ namespace AgentBridge
 
             try
             {
-                var current = File.Exists(fullPath) ? File.ReadAllText(fullPath) : "";
+                var current = File.ReadAllText(fullPath);
                 if (!TryUpsertManagedMarkdown(current, template, out var updated, out var updateError))
                 {
                     SetMarkdownStatus(updateError, MessageType.Error);
@@ -593,13 +604,7 @@ namespace AgentBridge
                         return false;
                     }
 
-                    var relativeInput = NormalizeProjectRelativeInput(input);
-                    if (string.IsNullOrWhiteSpace(relativeInput))
-                    {
-                        error = "目标文件必须是候选列表中的 CLAUDE.md 或 AGENTS.md。";
-                        return false;
-                    }
-                    fullPath = Path.GetFullPath(Path.Combine(projectRoot, relativeInput));
+                    fullPath = Path.GetFullPath(Path.Combine(projectRoot, input));
                 }
             }
             catch (System.ArgumentException)
@@ -615,13 +620,6 @@ namespace AgentBridge
             catch (PathTooLongException)
             {
                 error = "目标文件路径过长,请从候选列表重新选择 Markdown 文件。";
-                return false;
-            }
-
-            if (!string.Equals(Path.GetExtension(fullPath), ".md", System.StringComparison.OrdinalIgnoreCase))
-            {
-                fullPath = null;
-                error = "目标文件必须是 CLAUDE.md 或 AGENTS.md。";
                 return false;
             }
 
@@ -655,16 +653,6 @@ namespace AgentBridge
             var fileName = Path.GetFileName(path);
             return s_MarkdownTargetFileNames.Any(name =>
                 string.Equals(fileName, name, System.StringComparison.OrdinalIgnoreCase));
-        }
-
-        private static string NormalizeProjectRelativeInput(string path)
-        {
-            var normalized = (path ?? "").Trim().Replace('\\', '/').TrimStart('/');
-            while (normalized.StartsWith("./", System.StringComparison.Ordinal))
-            {
-                normalized = normalized.Substring(2);
-            }
-            return normalized;
         }
 
         private static List<MarkdownTargetOption> FindMarkdownTargetOptions()
@@ -748,20 +736,7 @@ namespace AgentBridge
 
             directories.Add(projectRoot);
 
-            DirectoryInfo parent;
-            try
-            {
-                parent = Directory.GetParent(projectRoot);
-            }
-            catch (System.ArgumentException)
-            {
-                return directories;
-            }
-            catch (System.NotSupportedException)
-            {
-                return directories;
-            }
-
+            var parent = Directory.GetParent(projectRoot);
             if (parent != null && !IsSameDirectory(projectRoot, parent.FullName))
             {
                 directories.Add(parent.FullName);
@@ -774,51 +749,21 @@ namespace AgentBridge
         {
             try
             {
-                if (!string.IsNullOrEmpty(Application.dataPath))
+                if (string.IsNullOrEmpty(Application.dataPath))
                 {
-                    var assetsPath = Path.GetFullPath(Application.dataPath);
-                    var parent = Directory.GetParent(assetsPath);
-                    if (parent != null && Directory.Exists(parent.FullName))
-                    {
-                        return parent.FullName;
-                    }
+                    return null;
                 }
-            }
-            catch (System.ArgumentException)
-            {
-            }
-            catch (System.NotSupportedException)
-            {
-            }
-            catch (System.UnauthorizedAccessException)
-            {
-            }
-            catch (IOException)
-            {
-            }
 
-            try
-            {
-                var currentDirectory = Directory.GetCurrentDirectory();
-                if (!string.IsNullOrEmpty(currentDirectory) && Directory.Exists(currentDirectory))
-                {
-                    return currentDirectory;
-                }
+                var parent = Directory.GetParent(Path.GetFullPath(Application.dataPath));
+                return parent != null && Directory.Exists(parent.FullName) ? parent.FullName : null;
             }
-            catch (System.ArgumentException)
+            catch (System.Exception ex) when (ex is System.ArgumentException ||
+                                              ex is System.NotSupportedException ||
+                                              ex is System.UnauthorizedAccessException ||
+                                              ex is IOException)
             {
+                return null;
             }
-            catch (System.NotSupportedException)
-            {
-            }
-            catch (System.UnauthorizedAccessException)
-            {
-            }
-            catch (IOException)
-            {
-            }
-
-            return null;
         }
 
         private static bool TryMakeProjectRelativePath(string fullPath, out string relativePath)
@@ -833,14 +778,7 @@ namespace AgentBridge
                     return false;
                 }
 
-                var rootUri = new System.Uri(EnsureTrailingDirectorySeparator(Path.GetFullPath(projectRoot)));
-                var fileUri = new System.Uri(Path.GetFullPath(fullPath));
-                if (!string.Equals(rootUri.Scheme, fileUri.Scheme, System.StringComparison.OrdinalIgnoreCase))
-                {
-                    return false;
-                }
-
-                relativePath = System.Uri.UnescapeDataString(rootUri.MakeRelativeUri(fileUri).ToString())
+                relativePath = Path.GetRelativePath(projectRoot, fullPath)
                     .Replace('\\', '/');
                 return !string.IsNullOrWhiteSpace(relativePath);
             }
@@ -888,18 +826,6 @@ namespace AgentBridge
             }
 
             return path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        }
-
-        private static string EnsureTrailingDirectorySeparator(string path)
-        {
-            if (string.IsNullOrEmpty(path))
-            {
-                return path;
-            }
-            return path.EndsWith(Path.DirectorySeparatorChar.ToString(), System.StringComparison.Ordinal)
-                || path.EndsWith(Path.AltDirectorySeparatorChar.ToString(), System.StringComparison.Ordinal)
-                ? path
-                : path + Path.DirectorySeparatorChar;
         }
 
         private static GUIContent SortHeaderContent(string label, bool ascending, string tooltip)

@@ -37,15 +37,16 @@ namespace AgentBridge
                 }
 
                 var asm = type.Assembly.GetName().Name;
+                var canDisable = handler.CanDisable;
                 entries.Add(new CommandEntry
                 {
                     Name = name,
                     Description = handler.Description,
                     Group = handler.Group,
-                    CanDisable = handler.CanDisable,
+                    CanDisable = canDisable,
                     Assembly = asm,
                     IsBuiltin = asm == BuiltinAssembly,
-                    Enabled = !disabled.Contains(name)
+                    Enabled = !canDisable || !disabled.Contains(name)
                 });
             }
             return entries.OrderBy(e => e.Name).ToList();

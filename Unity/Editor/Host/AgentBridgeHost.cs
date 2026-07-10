@@ -31,7 +31,6 @@ namespace AgentBridge
             }
 
             s_Channel = new FileChannel(BridgeSettings.RootDir);
-            ReclaimOrphans();
             EditorApplication.update -= Tick;
             EditorApplication.update += Tick;
             s_Running = true;
@@ -51,26 +50,6 @@ namespace AgentBridge
             Debug.Log("[AgentBridge] stopped.");
         }
 
-        /// <summary>启动时把 processing/ 中无配对响应的孤儿请求补 INTERRUPTED(at-most-once,不重试)。</summary>
-        private static void ReclaimOrphans()
-        {
-            foreach (var path in s_Channel.ListOrphans())
-            {
-                var id = s_Channel.IdFromProcessingPath(path);
-                try
-                {
-                    WriteStamped(Response.MakeError(id, ErrorCodes.Interrupted,
-                        "request was interrupted by a domain reload before completion"));
-                }
-                catch (Exception e)
-                {
-                    Debug.LogError($"[AgentBridge] failed to write INTERRUPTED for {id}: {e.Message}");
-                }
-
-                s_Channel.ReleaseProcessed(path);
-            }
-        }
-
         private static void Tick()
         {
             var now = EditorApplication.timeSinceStartup;
@@ -80,42 +59,48 @@ namespace AgentBridge
             }
             s_LastPollTime = now;
 
-            // 本轮只认领最新的最终请求;旧最终请求由 FileChannel 删除。
-            if (s_Channel.TryClaimLatest(out var claimedPath, out var request, out var rawId))
+            FileChannel.ClaimedRequest claim;
+            try
             {
-                Response response;
-                if (request == null)
+                // FileChannel 先恢复中断事务，再认领最新最终请求；本轮至多处理一个。
+                if (!s_Channel.TryTakeNext(out claim))
                 {
-                    response = Response.MakeError(rawId, ErrorCodes.InternalError, "failed to parse request json");
+                    return;
                 }
-                else
-                {
-                    if (string.IsNullOrEmpty(request.Id))
-                    {
-                        request.Id = rawId; // id 回退到文件名
-                    }
-                    response = CommandDispatcher.Dispatch(request);
-                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[AgentBridge] failed to claim or recover request: {e.Message}");
+                return;
+            }
 
-                try
-                {
-                    WriteStamped(response);
-                }
-                catch (Exception e)
-                {
-                    Debug.LogError($"[AgentBridge] failed to write response for {rawId}: {e.Message}");
-                }
+            var response = claim.CanDispatch
+                ? CommandDispatcher.Dispatch(claim.Request)
+                : CommandDispatcher.Error(claim.ErrorCode, claim.ErrorMessage);
 
-                s_Channel.ReleaseProcessed(claimedPath);
+            try
+            {
+                s_Channel.Commit(claim, response, CurrentCommandsVersion());
+            }
+            catch (Exception e)
+            {
+                // commit point 前失败时 claim 保留在 processing，下轮按 INTERRUPTED 恢复。
+                Debug.LogError($"[AgentBridge] failed to commit response for {claim.Id}: {e.Message}");
             }
         }
 
-        // 写响应前统一盖 commandsVersion,覆盖正常、错误和中断恢复等所有路径。
-        private static void WriteStamped(Response response)
+        private static string CurrentCommandsVersion()
         {
-            s_Channel.ClearResponses(); // 每次返回前清空旧响应,只保留当前这次响应。
-            response.CommandsVersion = CommandRegistry.Version;
-            s_Channel.WriteResponse(response);
+            try
+            {
+                return CommandRegistry.Version;
+            }
+            catch (Exception e)
+            {
+                // 命令发现异常不能再导致已认领请求无响应；空串仍保留字段。
+                Debug.LogError($"[AgentBridge] failed to compute commandsVersion: {e.Message}");
+                return "";
+            }
         }
     }
 }

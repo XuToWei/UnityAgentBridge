@@ -9,16 +9,19 @@ namespace AgentBridge
         /// <summary>params 缺字段 / 类型错。</summary>
         public const string InvalidParams = "INVALID_PARAMS";
 
+        /// <summary>请求信封违反协议（格式错误、缺字段、版本不支持或 id 不一致）。</summary>
+        public const string InvalidRequest = "INVALID_REQUEST";
+
         /// <summary>handler 执行抛未分类异常(message 带堆栈摘要)。</summary>
         public const string HandlerException = "HANDLER_EXCEPTION";
 
         /// <summary>命令被命令管理器禁用(已注册但在禁用名单内,不执行)。</summary>
         public const string CommandDisabled = "COMMAND_DISABLED";
 
-        /// <summary>请求处理中途遇 domain reload,重启后补发。</summary>
+        /// <summary>请求已认领但响应未提交，执行结果未知。</summary>
         public const string Interrupted = "INTERRUPTED";
 
-        /// <summary>框架内部错误(解析失败等)。</summary>
+        /// <summary>框架内部错误。</summary>
         public const string InternalError = "INTERNAL_ERROR";
     }
 }

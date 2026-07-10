@@ -28,8 +28,13 @@ agent <── .agentbridge/responses/{id}.response.json
 **请求信封**
 
 ```json
-{ "v": 1, "id": "abc", "command": "ping", "params": {}, "timestamp": "..." }
+{ "v": 1, "id": "abc", "command": "ping", "params": {} }
 ```
+
+请求文件名中的 `{id}` 是规范身份:`requests/{id}.request.json`、请求信封 `id`、
+`responses/{id}.response.json` 与响应 `id` 必须一致。缺少 `v`、`id` 或 `command`、JSON 格式错误、
+以及 id 不一致都会返回 `INVALID_REQUEST`。为保证跨平台文件名兼容,建议 id 使用
+`[A-Za-z0-9][A-Za-z0-9_-]{0,63}`。
 
 **响应信封**(`status: ok` → `result`;`status: error` → `error`;每条响应都盖 `commandsVersion`)
 
@@ -59,7 +64,7 @@ agent <── .agentbridge/responses/{id}.response.json
 | `import_asset` | 把外部磁盘文件复制进工程并导入 |
 | `move_asset` | 工程内移动/重命名资产 |
 | `delete_asset` | 删除资产(进回收站) |
-| `refresh` | `AssetDatabase.Refresh()` |
+| `refresh` | 保存所有打开场景和资产后执行 `AssetDatabase.Refresh()` |
 | `recompile` | 触发脚本重编译(立即返回,结果经 `get_compile_result` 读) |
 | `get_compile_result` | 读最近一次编译结果(`errors[]` / `warnings[]` + 计数) |
 | `search_logs` | 搜索 Console 日志(子串或正则),按类型过滤、限制数量;返回匹配条目及 message/type/file/line |
@@ -99,6 +104,8 @@ public sealed class SayHelloHandler : ICommandHandler
 ```
 
 `ICommandHandler` 实现经反射 / `TypeCache` 自动注册,无需手动接线、无需特性。成员:`Command`(唯一名)、`Description`、`Group`(窗口分组)、`CanDisable`(false 则锁定常开)、`Execute`、`GetParamsSchema`。抛 `CommandException(code, message)` 返回带类型的错误。
+
+当前扩展 Seam 只有 `ICommandHandler`;包不维护 `extension.json` 本地安装/卸载协议。请通过 UPM 或工程程序集添加、移除扩展代码。
 
 ---
 

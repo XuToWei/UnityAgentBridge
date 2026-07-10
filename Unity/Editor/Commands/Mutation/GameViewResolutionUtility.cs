@@ -14,8 +14,6 @@ namespace AgentBridge
         public const string UnavailableError = "GAME_VIEW_RESOLUTION_UNAVAILABLE";
         public const string FailedError = "GAME_VIEW_RESOLUTION_FAILED";
 
-        private const string DefaultGroupName = "Standalone";
-
         private static bool s_Init;
         private static Type s_GameViewType;
         private static Type s_GameViewSizesType;
@@ -23,29 +21,21 @@ namespace AgentBridge
         private static Type s_GameViewSizeGroupType;
         private static Type s_GameViewSizeTypeEnum;
         private static Type s_GameViewSizeGroupTypeEnum;
-        private static Type s_ScriptableSingletonType;
         private static PropertyInfo s_GameViewSizesInstance;
         private static MethodInfo s_GetGroup;
         private static MethodInfo s_AddCustomSize;
-        private static MethodInfo s_FindSize;
         private static MethodInfo s_GetBuiltinCount;
         private static MethodInfo s_GetCustomCount;
         private static MethodInfo s_GetGameViewSize;
         private static MethodInfo s_SaveToHDD;
         private static PropertyInfo s_SelectedSizeIndex;
         private static PropertyInfo s_GameViewCurrentSizeGroupType;
-        private static PropertyInfo s_GameViewSizesCurrentGroupType;
         private static ConstructorInfo s_GameViewSizeConstructor;
         private static PropertyInfo s_SizeTypeProperty;
         private static PropertyInfo s_WidthProperty;
         private static PropertyInfo s_HeightProperty;
         private static PropertyInfo s_BaseTextProperty;
-        private static FieldInfo s_SizeTypeField;
-        private static FieldInfo s_WidthField;
-        private static FieldInfo s_HeightField;
-        private static FieldInfo s_BaseTextField;
         private static object s_FixedResolutionValue;
-        private static object s_DefaultGroupValue;
 
         public readonly struct Result
         {
@@ -99,7 +89,7 @@ namespace AgentBridge
                 }
 
                 var gameView = GetGameView();
-                var groupType = ResolveGroupType(gameView, sizes);
+                var groupType = s_GameViewCurrentSizeGroupType.GetValue(gameView, null);
                 var group = s_GetGroup.Invoke(sizes, new[] { groupType });
                 if (group == null)
                 {
@@ -112,7 +102,7 @@ namespace AgentBridge
                 {
                     var size = s_GameViewSizeConstructor.Invoke(new[] { s_FixedResolutionValue, width, height, label });
                     s_AddCustomSize.Invoke(group, new[] { size });
-                    s_SaveToHDD?.Invoke(sizes, null);
+                    s_SaveToHDD.Invoke(sizes, null);
                     index = FindFixedSize(group, width, height);
                     if (index < 0)
                     {
@@ -139,7 +129,7 @@ namespace AgentBridge
                         $"设置 Game View 分辨率后验证失败:当前为 {selectedInfo.Width}x{selectedInfo.Height}。");
                 }
 
-                return new Result(width, height, selectedInfo.Label, selectedIndex, created, GroupName(groupType));
+                return new Result(width, height, selectedInfo.Label, selectedIndex, created, groupType.ToString());
             }
             catch (CommandException)
             {
@@ -177,69 +167,40 @@ namespace AgentBridge
                 return false;
             }
 
-            s_ScriptableSingletonType = typeof(ScriptableSingleton<>).MakeGenericType(s_GameViewSizesType);
+            var scriptableSingletonType = typeof(ScriptableSingleton<>).MakeGenericType(s_GameViewSizesType);
             const BindingFlags StaticFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
             const BindingFlags InstanceFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
 
-            s_GameViewSizesInstance = s_ScriptableSingletonType.GetProperty("instance", StaticFlags);
+            s_GameViewSizesInstance = scriptableSingletonType.GetProperty("instance", StaticFlags);
             s_GetGroup = s_GameViewSizesType.GetMethod("GetGroup", InstanceFlags, null, new[] { s_GameViewSizeGroupTypeEnum }, null);
             s_SaveToHDD = s_GameViewSizesType.GetMethod("SaveToHDD", InstanceFlags);
             s_AddCustomSize = s_GameViewSizeGroupType.GetMethod("AddCustomSize", InstanceFlags, null, new[] { s_GameViewSizeType }, null);
-            s_FindSize = s_GameViewSizeGroupType.GetMethod("FindSize", InstanceFlags, null,
-                new[] { s_GameViewSizeTypeEnum, typeof(int), typeof(int) }, null);
             s_GetBuiltinCount = s_GameViewSizeGroupType.GetMethod("GetBuiltinCount", InstanceFlags);
             s_GetCustomCount = s_GameViewSizeGroupType.GetMethod("GetCustomCount", InstanceFlags);
             s_GetGameViewSize = s_GameViewSizeGroupType.GetMethod("GetGameViewSize", InstanceFlags, null, new[] { typeof(int) }, null);
             s_SelectedSizeIndex = s_GameViewType.GetProperty("selectedSizeIndex", InstanceFlags);
             s_GameViewCurrentSizeGroupType = s_GameViewType.GetProperty("currentSizeGroupType", InstanceFlags);
-            s_GameViewSizesCurrentGroupType = s_GameViewSizesType.GetProperty("currentGroupType", InstanceFlags);
             s_GameViewSizeConstructor = s_GameViewSizeType.GetConstructor(InstanceFlags, null,
                 new[] { s_GameViewSizeTypeEnum, typeof(int), typeof(int), typeof(string) }, null);
 
             s_SizeTypeProperty = s_GameViewSizeType.GetProperty("sizeType", InstanceFlags);
             s_WidthProperty = s_GameViewSizeType.GetProperty("width", InstanceFlags);
             s_HeightProperty = s_GameViewSizeType.GetProperty("height", InstanceFlags);
-            s_BaseTextProperty = s_GameViewSizeType.GetProperty("baseText", InstanceFlags)
-                ?? s_GameViewSizeType.GetProperty("displayText", InstanceFlags);
-            s_SizeTypeField = s_GameViewSizeType.GetField("m_SizeType", InstanceFlags);
-            s_WidthField = s_GameViewSizeType.GetField("m_Width", InstanceFlags);
-            s_HeightField = s_GameViewSizeType.GetField("m_Height", InstanceFlags);
-            s_BaseTextField = s_GameViewSizeType.GetField("m_BaseText", InstanceFlags)
-                ?? s_GameViewSizeType.GetField("m_DisplayText", InstanceFlags);
+            s_BaseTextProperty = s_GameViewSizeType.GetProperty("baseText", InstanceFlags);
+            s_FixedResolutionValue = Enum.Parse(s_GameViewSizeTypeEnum, "FixedResolution");
 
-            if (!TryParseEnum(s_GameViewSizeTypeEnum, "FixedResolution", out s_FixedResolutionValue) ||
-                !TryParseEnum(s_GameViewSizeGroupTypeEnum, DefaultGroupName, out s_DefaultGroupValue) ||
-                s_GameViewSizesInstance == null || s_GetGroup == null || s_AddCustomSize == null ||
+            if (s_GameViewSizesInstance == null || s_GetGroup == null || s_AddCustomSize == null ||
+                s_SaveToHDD == null ||
                 s_GetBuiltinCount == null || s_GetCustomCount == null || s_GetGameViewSize == null ||
-                s_SelectedSizeIndex == null || s_GameViewSizeConstructor == null ||
-                !CanReadSizeInfo())
+                s_SelectedSizeIndex == null || s_GameViewCurrentSizeGroupType == null ||
+                s_GameViewSizeConstructor == null || s_SizeTypeProperty == null ||
+                s_WidthProperty == null || s_HeightProperty == null || s_BaseTextProperty == null)
             {
                 s_GameViewType = null;
                 return false;
             }
 
             return true;
-        }
-
-        private static bool CanReadSizeInfo()
-        {
-            return (s_SizeTypeProperty != null || s_SizeTypeField != null) &&
-                (s_WidthProperty != null || s_WidthField != null) &&
-                (s_HeightProperty != null || s_HeightField != null);
-        }
-
-        private static bool TryParseEnum(Type enumType, string name, out object value)
-        {
-            try
-            {
-                value = Enum.Parse(enumType, name);
-                return true;
-            }
-            catch
-            {
-                value = null;
-                return false;
-            }
         }
 
         private static EditorWindow GetGameView()
@@ -252,38 +213,8 @@ namespace AgentBridge
             return EditorWindow.GetWindow(s_GameViewType);
         }
 
-        private static object ResolveGroupType(EditorWindow gameView, object sizes)
-        {
-            if (s_GameViewCurrentSizeGroupType != null)
-            {
-                var value = s_GameViewCurrentSizeGroupType.GetValue(gameView, null);
-                if (value != null)
-                {
-                    return value;
-                }
-            }
-            if (s_GameViewSizesCurrentGroupType != null)
-            {
-                var value = s_GameViewSizesCurrentGroupType.GetValue(sizes, null);
-                if (value != null)
-                {
-                    return value;
-                }
-            }
-            return s_DefaultGroupValue;
-        }
-
         private static int FindFixedSize(object group, int width, int height)
         {
-            if (s_FindSize != null)
-            {
-                var found = Convert.ToInt32(s_FindSize.Invoke(group, new[] { s_FixedResolutionValue, width, height }));
-                if (found >= 0 && IsMatchingFixedSize(GetSize(group, found), width, height))
-                {
-                    return found;
-                }
-            }
-
             var count = SizeCount(group);
             for (var i = 0; i < count; i++)
             {
@@ -315,25 +246,11 @@ namespace AgentBridge
 
         private static SizeInfo ReadSize(object size)
         {
-            var sizeType = ReadMember(size, s_SizeTypeProperty, s_SizeTypeField);
-            var width = Convert.ToInt32(ReadMember(size, s_WidthProperty, s_WidthField));
-            var height = Convert.ToInt32(ReadMember(size, s_HeightProperty, s_HeightField));
-            var label = ReadMember(size, s_BaseTextProperty, s_BaseTextField) as string ?? "";
+            var sizeType = s_SizeTypeProperty.GetValue(size, null);
+            var width = Convert.ToInt32(s_WidthProperty.GetValue(size, null));
+            var height = Convert.ToInt32(s_HeightProperty.GetValue(size, null));
+            var label = s_BaseTextProperty.GetValue(size, null) as string ?? "";
             return new SizeInfo(Equals(sizeType, s_FixedResolutionValue), width, height, label);
-        }
-
-        private static object ReadMember(object target, PropertyInfo property, FieldInfo field)
-        {
-            if (property != null)
-            {
-                return property.GetValue(target, null);
-            }
-            return field != null ? field.GetValue(target) : null;
-        }
-
-        private static string GroupName(object groupType)
-        {
-            return groupType != null ? groupType.ToString() : DefaultGroupName;
         }
 
         private readonly struct SizeInfo

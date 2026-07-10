@@ -8,25 +8,23 @@ namespace AgentBridge
     /// <summary>
     /// 命令启停状态。全局禁用名单存 EditorPrefs,key 带工程标识以避免跨工程串扰。
     /// 禁用名单覆盖内置和扩展命令,改动后同步到 CommandRegistry。
-    /// domain reload 后由 CommandToggleBootstrap 重应用。
+    /// domain reload 后立即恢复,但不构建命令注册表。
     /// </summary>
+    [InitializeOnLoad]
     public static class CommandToggle
     {
         // EditorPrefs 是按 Unity 安装共享的 → key 带 dataPath 区分工程。
         private static string PrefKey => "AgentBridge.DisabledCommands." + Application.dataPath;
 
-        /// <summary>某命令是否不可禁用(由 handler.CanDisable 声明,经 CommandRegistry 汇总)。</summary>
-        public static bool IsEssential(string command)
+        static CommandToggle()
         {
-            return !CommandRegistry.CanDisable(command);
+            Reapply();
         }
 
-        /// <summary>当前被禁用的命令名(只读)。不可禁用命令永不计入(即使 EditorPrefs 里有也忽略)。</summary>
+        /// <summary>当前持久化的禁用命令名(只读)。不在读取时构建命令注册表。</summary>
         public static IReadOnlyCollection<string> Disabled()
         {
-            var set = Read();
-            set.RemoveWhere(c => !CommandRegistry.CanDisable(c));
-            return set;
+            return Read();
         }
 
         /// <summary>启停一条命令(内置或扩展均可)。不可禁用命令拒绝禁用。</summary>
@@ -53,7 +51,7 @@ namespace AgentBridge
             Reapply();
         }
 
-        /// <summary>从 EditorPrefs 重建禁用名单并同步到 CommandRegistry。domain reload 后调用。</summary>
+        /// <summary>从 EditorPrefs 恢复禁用名单并同步到 CommandRegistry。domain reload 后不触发命令扫描。</summary>
         public static void Reapply()
         {
             CommandRegistry.SetDisabledCommands(Disabled());

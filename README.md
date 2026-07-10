@@ -28,8 +28,13 @@ agent <── .agentbridge/responses/{id}.response.json
 **Request envelope**
 
 ```json
-{ "v": 1, "id": "abc", "command": "ping", "params": {}, "timestamp": "..." }
+{ "v": 1, "id": "abc", "command": "ping", "params": {} }
 ```
+
+The request filename stem is the canonical `id`: `requests/{id}.request.json`, the envelope `id`,
+`responses/{id}.response.json`, and the response `id` must match. Missing `v`, `id`, or `command`,
+malformed JSON, and ID mismatches are rejected with `INVALID_REQUEST`. For portable filenames,
+prefer IDs matching `[A-Za-z0-9][A-Za-z0-9_-]{0,63}`.
 
 **Response envelope** (`status: ok` → `result`; `status: error` → `error`; `commandsVersion` is stamped on every response)
 
@@ -59,7 +64,7 @@ agent <── .agentbridge/responses/{id}.response.json
 | `import_asset` | Copy an external disk file into the project and import it |
 | `move_asset` | Move / rename an asset within the project |
 | `delete_asset` | Delete an asset (to trash) |
-| `refresh` | `AssetDatabase.Refresh()` |
+| `refresh` | Save all open scenes and assets before `AssetDatabase.Refresh()` |
 | `recompile` | Trigger a script recompile (returns immediately; result via `get_compile_result`) |
 | `get_compile_result` | Read the last compile result (`errors[]` / `warnings[]` + counts) |
 | `search_logs` | Search Console logs by query (substring or regex), type filter, limit; returns matched entries with message/type/file/line |
@@ -99,6 +104,8 @@ public sealed class SayHelloHandler : ICommandHandler
 ```
 
 `ICommandHandler` implementations are auto-registered via reflection / `TypeCache` — no manual wiring, no attribute. Members: `Command` (unique name), `Description`, `Group` (window grouping), `CanDisable` (false locks it on), `Execute`, `GetParamsSchema`. Throw `CommandException(code, message)` to return a typed error.
+
+`ICommandHandler` is the only extension seam. The package does not maintain a local `extension.json` install/uninstall protocol; add or remove extension code through UPM or project assemblies.
 
 ---
 

@@ -4,46 +4,62 @@ using Newtonsoft.Json.Linq;
 namespace AgentBridge
 {
     /// <summary>
-    /// 将已解析的 Request 分发给对应命令处理器,并把所有异常统一转换为 error 响应。
+    /// 将 FileChannel 已校验的 Request 分发给对应命令处理器,并把异常统一转换为 error 响应。
     /// 每个被认领的请求都必须产生一份响应。
     /// </summary>
-    public static class CommandDispatcher
+    internal static class CommandDispatcher
     {
-        public static Response Dispatch(Request request)
+        internal static Response Dispatch(Request request)
         {
-            if (request == null)
+            ICommandHandler handler;
+            try
             {
-                return Response.MakeError(null, ErrorCodes.InternalError, "request was null or failed to parse");
-            }
+                if (!CommandRegistry.TryGet(request.Command, out handler))
+                {
+                    return Error(ErrorCodes.UnknownCommand, $"no handler for '{request.Command}'");
+                }
 
-            if (string.IsNullOrEmpty(request.Command))
-            {
-                return Response.MakeError(request.Id, ErrorCodes.InvalidParams, "missing 'command'");
+                if (CommandRegistry.IsDisabled(request.Command))
+                {
+                    return Error(ErrorCodes.CommandDisabled, $"command '{request.Command}' is disabled");
+                }
             }
-
-            if (!CommandRegistry.TryGet(request.Command, out var handler))
+            catch (Exception ex)
             {
-                return Response.MakeError(request.Id, ErrorCodes.UnknownCommand, $"no handler for '{request.Command}'");
-            }
-
-            if (CommandRegistry.IsDisabled(request.Command))
-            {
-                return Response.MakeError(request.Id, ErrorCodes.CommandDisabled, $"command '{request.Command}' is disabled");
+                return Error(ErrorCodes.InternalError, Summarize(ex));
             }
 
             try
             {
                 var result = handler.Execute(request.Params ?? new JObject());
-                return Response.MakeOk(request.Id, result);
+                return Ok(result);
             }
             catch (CommandException ce)
             {
-                return Response.MakeError(request.Id, ce.Code, ce.Message);
+                return Error(ce.Code, ce.Message);
             }
             catch (Exception ex)
             {
-                return Response.MakeError(request.Id, ErrorCodes.HandlerException, Summarize(ex));
+                return Error(ErrorCodes.HandlerException, Summarize(ex));
             }
+        }
+
+        private static Response Ok(object result)
+        {
+            return new Response
+            {
+                Status = "ok",
+                Result = result == null ? JValue.CreateNull() : JToken.FromObject(result)
+            };
+        }
+
+        internal static Response Error(string code, string message)
+        {
+            return new Response
+            {
+                Status = "error",
+                Error = new ErrorInfo { Code = code, Message = message }
+            };
         }
 
         private static string Summarize(Exception ex)

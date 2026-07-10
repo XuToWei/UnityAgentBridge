@@ -13,7 +13,7 @@
 这五条是硬性契约,任何一条违反都会导致请求丢失、被读半截、或命令集不同步。开始前请记牢——落到每条命令上的**具体执行步骤**见第 7 节「每让 Unity 做一件事,严格按此 5 步」:
 
 1. **原子写请求** —— 永远先写 `requests/{id}.request.json.tmp`,再 rename 成 `requests/{id}.request.json`。**绝不直接写最终名**(会被 Unity 读到半截)。
-2. **id 每次唯一** —— `{id}` 由你生成,**每条请求全新、绝不复用**(即便重试也换新 id)。
+2. **id 唯一且四处一致** —— `{id}` 由你生成,**每条请求全新、绝不复用**(即便重试也换新 id);请求文件名、请求 JSON 的 `id`、响应文件名、响应 JSON 的 `id` 必须完全一致。建议使用跨平台安全格式:`[A-Za-z0-9][A-Za-z0-9_-]{0,63}`。
 3. **发一条、等一条、读完再发下一条** —— 不要并发堆多条请求;若 `requests/` 同时存在多条最终请求,Unity 只认领最新一条并删除其它请求(不会给旧请求写响应);`responses/` 也只保留最新一条响应。
 4. **启动只调一次 `list_commands` 并记住结果** —— 命令清单不在文档里写死,必须运行时发现;调一次、缓存清单 + `commandsVersion`,之后**一直用缓存,不要重复调**。
 5. **仅当命令集变了才刷新** —— 只有响应的 `commandsVersion` 与缓存不一致、装/卸/启停扩展后、或收到 `UNKNOWN_COMMAND` 时,才重调一次 `list_commands`;其余时候不重调。
@@ -41,11 +41,11 @@ Agent ↔ Unity 通过**文件**通讯,无网络。先定位 Unity 工程目录 
 2. **轮询响应**:读 `responses/{id}.response.json`,**文件出现即为完成**(Unity 也用 tmp→rename 原子写,不会读到半截)。
 3. **读完不必删** —— 清理由 Unity 端负责。
 
-> 清理机制:Unity 端认领请求时只选择 `requests/` 中最新的最终 `.request.json`;其它最终请求会被删除且不会产生响应。并发写入中的 `.request.json.tmp` 会被忽略,不会被认领或删除。Unity 每次写响应前也会清空 `responses/`,再写入当前 `{id}.response.json`,所以目录里**只有最新一次响应**——这正是铁律 3「发一条、等一条」的原因:抢发会让旧请求被删除,上一条响应也可能被冲掉。
+> 清理机制:Unity 端认领请求时只选择 `requests/` 中最新的最终 `.request.json`;其它最终请求会被删除且不会产生响应。单独存在的 `.request.json.tmp` 会被忽略;成功取得一个 claim 后、发布响应前,Unity 会删除 `requests/` 中残留的请求临时文件。Unity 先原子发布当前 `{id}.response.json`,成功后才清理其它最终响应并释放 `processing/` claim,所以写入失败不会先抹掉上一份有效响应;正常情况下目录里**只有最新一次响应**——这正是铁律 3「发一条、等一条」的原因。
 
 **请求** `{id}.request.json`:
 ```json
-{ "v": 1, "id": "x1", "command": "ping", "params": {}, "timestamp": "2026-06-25T10:00:00Z" }
+{ "v": 1, "id": "x1", "command": "ping", "params": {} }
 ```
 
 **响应** `{id}.response.json`:
@@ -56,7 +56,7 @@ Agent ↔ Unity 通过**文件**通讯,无网络。先定位 Unity 工程目录 
 ```
 
 字段:
-- `id`:必须与你发的请求一致——**用它对上号**,别用文件顺序判断。
+- `id`:必须显式提供,并与请求文件名中的 `{id}` 完全一致——**用它对上号**,别用文件顺序判断。缺失、空值、大小写不同都不会执行命令。
 - `status`:`"ok"` | `"error"`。`ok` 时 `error=null`;`error` 时 `result=null`。
 - `result`:命令结果(`ok` 时)。
 - `error`:`{ "code": string, "message": string }`(`error` 时)。
@@ -68,9 +68,10 @@ Agent ↔ Unity 通过**文件**通讯,无网络。先定位 Unity 工程目录 
 |---|---|---|
 | `UNKNOWN_COMMAND` | command 未注册(命令集可能变了) | 重调 `list_commands` 刷新缓存,再重试 |
 | `INVALID_PARAMS` | params 缺字段 / 类型错 | 对照 `paramsSchema` 修正参数后重发 |
+| `INVALID_REQUEST` | 请求信封违约(JSON 格式错误,或缺少/传错 `v`、`id`、`command`) | 修正请求 JSON,换新 id 后重发;不要复用原 id |
 | `HANDLER_EXCEPTION` | 命令执行抛异常(message 带堆栈摘要) | 读 message 定位;非临时问题别盲目重试 |
-| `INTERRUPTED` | 处理中途遇编辑器重编译(domain reload) | 换新 id 重发同一请求 |
-| `INTERNAL_ERROR` | 框架内部错误(如请求 JSON 解析失败) | 检查你写的 JSON 是否合法 |
+| `INTERRUPTED` | 请求已认领,但在响应提交前遇到编辑器重编译(domain reload)或写入失败;命令是否已完成未知 | 确认副作用后,换新 id 决定是否重发 |
+| `INTERNAL_ERROR` | 框架内部错误 | 读 message 定位桥接实现问题;不要盲目重试 |
 | `CONSOLE_UNAVAILABLE` | 命令需访问 Console 但内部 API 反射失败(版本不兼容) | 该命令在当前 Unity 版本不可用,换别的方式 |
 
 handler 也可返回自有错误码(如 `MENU_NOT_FOUND`),含义见该命令 `description`。
@@ -139,12 +140,12 @@ handler 也可返回自有错误码(如 `MENU_NOT_FOUND`),含义见该命令 `de
 
 ### 每让 Unity 做一件事,严格按此 5 步(不可跳步、不可合并、不可并发)
 1. **取 schema**:从缓存里找到该命令,按它的 `paramsSchema` 拼 `params`(命令不存在 → 先做"重新发现",别猜)。
-2. **起唯一 id**:为这条请求生成一个**全新、从未用过**的 `id`(哪怕是重试,也换新 id)。
-3. **原子写**:先写 `<root>/requests/{id}.request.json.tmp`,**再改名**成 `<root>/requests/{id}.request.json`。**绝不能直接写最终名**(会被读到半截)。
+2. **起唯一 id**:为这条请求生成一个**全新、从未用过**的 `id`(哪怕是重试,也换新 id);建议格式:`[A-Za-z0-9][A-Za-z0-9_-]{0,63}`。
+3. **原子写**:请求 JSON 的 `id` 必须与文件名 `{id}` 完全一致;先写 `<root>/requests/{id}.request.json.tmp`,**再改名**成 `<root>/requests/{id}.request.json`。**绝不能直接写最终名**(会被读到半截)。
    - Windows:`Move-Item -Force {id}.request.json.tmp {id}.request.json`
    - macOS/Linux:`mv {id}.request.json.tmp {id}.request.json`
 4. **等这一条的响应**:反复读 `<root>/responses/{id}.response.json`,直到该文件出现(约每 1 秒一次,最多等 ~30 秒;超时按失败处理)。**在读到它之前,绝不发下一条命令**——Unity 只认领最新最终请求,抢发会让旧请求被删除且没有响应;`responses/` 也只保留最新一条。
-5. **按 id 核对并处理**:确认响应 `id` 与你发的一致;`status=="ok"` 用 `result`,`status=="error"` 看 `error.code`(如 `INVALID_PARAMS` 改参数、`INTERRUPTED` 换新 id 重发)。顺便对照响应里的 `commandsVersion`(见文末)。
+5. **按 id 核对并处理**:确认响应 `id` 与你发的一致;`status=="ok"` 用 `result`,`status=="error"` 看 `error.code`(如 `INVALID_PARAMS` 改参数、`INTERRUPTED` 先确认副作用再换新 id 决定是否重发)。顺便对照响应里的 `commandsVersion`(见文末)。
 
 ### 完整示例:让 Unity 执行 ping
 - 生成 id:`req-8f3a`
@@ -156,6 +157,7 @@ handler 也可返回自有错误码(如 `MENU_NOT_FOUND`),含义见该命令 `de
 ### 绝不(违反任一条都会出错)
 - 绝不直接写 `.request.json`(必须先 `.tmp` 再改名)。
 - 绝不复用 `id`。
+- 绝不让请求 JSON 的 `id` 与请求文件名 `{id}` 不一致。
 - 绝不在上一条响应读到之前,发下一条命令。
 - 绝不跳过第 0 步、凭记忆或猜测发命令。
 
