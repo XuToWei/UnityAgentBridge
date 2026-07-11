@@ -12,7 +12,7 @@ namespace AgentBridge
     public sealed class GetObjectHandler : ICommandHandler
     {
         public string Command => "get_object";
-        public string Description => "返回某 GameObject 的组件及其顶层属性;params.object 必填,componentTypes 可选过滤";
+        public string Description => "返回 GameObject 及组件;components[] 可直接作为 set_property.component";
         public string Group => "Inspection";
         public bool CanDisable => true;
 
@@ -22,6 +22,13 @@ namespace AgentBridge
             var go = SceneObjectResolver.ResolveObject(objRef);
             var filter = @params?["componentTypes"]?.ToObject<string[]>();
             var hasFilter = filter != null && filter.Length > 0;
+            var objectInfo = new
+            {
+                name = go.name,
+                path = SceneObjectResolver.GetPath(go.transform),
+                instanceId = go.GetInstanceID(),
+                active = go.activeSelf
+            };
 
             var typeCounts = new Dictionary<string, int>();
             var outComps = new List<object>();
@@ -42,6 +49,7 @@ namespace AgentBridge
 
                 outComps.Add(new
                 {
+                    @object = objectInfo,
                     type = full,
                     index = idx,
                     properties = PropertySerializer.SerializeTopLevel(c)
@@ -50,21 +58,32 @@ namespace AgentBridge
 
             return new
             {
-                @object = new
-                {
-                    name = go.name,
-                    path = SceneObjectResolver.GetPath(go.transform),
-                    instanceId = go.GetInstanceID(),
-                    active = go.activeSelf
-                },
+                @object = objectInfo,
                 components = outComps
             };
         }
 
         public JObject GetParamsSchema()
         {
-            return JObject.Parse(
-                @"{""type"":""object"",""properties"":{""object"":{""type"":""object""},""componentTypes"":{""type"":""array"",""items"":{""type"":""string""}}},""required"":[""object""]}");
+            return JObject.Parse(@"{
+  ""type"": ""object"",
+  ""properties"": {
+    ""object"": {
+      ""type"": ""object"",
+      ""description"": ""GameObject 引用;path 或 instanceId 至少提供一个。"",
+      ""properties"": {
+        ""path"": { ""type"": ""string"" },
+        ""instanceId"": { ""type"": ""integer"" }
+      }
+    },
+    ""componentTypes"": {
+      ""type"": ""array"",
+      ""items"": { ""type"": ""string"" },
+      ""description"": ""可选组件类型名过滤。""
+    }
+  },
+  ""required"": [""object""]
+}");
         }
     }
 }

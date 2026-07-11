@@ -64,8 +64,30 @@ namespace AgentBridge
 
         public JObject GetParamsSchema()
         {
-            return JObject.Parse(
-                @"{""type"":""object"",""properties"":{""component"":{""type"":""object""},""propertyPath"":{""type"":""string""},""value"":{}},""required"":[""component"",""propertyPath""]}");
+            return JObject.Parse(@"{
+  ""type"": ""object"",
+  ""properties"": {
+    ""component"": {
+      ""type"": ""object"",
+      ""description"": ""组件引用;可直接使用 get_object 返回的 components[] 项。"",
+      ""properties"": {
+        ""object"": {
+          ""type"": ""object"",
+          ""properties"": {
+            ""path"": { ""type"": ""string"" },
+            ""instanceId"": { ""type"": ""integer"" }
+          }
+        },
+        ""type"": { ""type"": ""string"" },
+        ""index"": { ""type"": ""integer"", ""minimum"": 0, ""default"": 0 }
+      },
+      ""required"": [""object"", ""type""]
+    },
+    ""propertyPath"": { ""type"": ""string"" },
+    ""value"": {}
+  },
+  ""required"": [""component"", ""propertyPath""]
+}");
         }
     }
 }

@@ -32,8 +32,20 @@ namespace AgentBridge
 
         public JObject GetParamsSchema()
         {
-            return JObject.Parse(
-                @"{""type"":""object"",""properties"":{""object"":{""type"":""object""}},""required"":[""object""]}");
+            return JObject.Parse(@"{
+  ""type"": ""object"",
+  ""properties"": {
+    ""object"": {
+      ""type"": ""object"",
+      ""description"": ""GameObject 引用;path 或 instanceId 至少提供一个。"",
+      ""properties"": {
+        ""path"": { ""type"": ""string"" },
+        ""instanceId"": { ""type"": ""integer"" }
+      }
+    }
+  },
+  ""required"": [""object""]
+}");
         }
     }
 }

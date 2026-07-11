@@ -6,7 +6,7 @@
 
 ---
 
-Unity Agent Bridge 是一个**仅编辑器**的 Unity 包,通过**文件通讯(file-IPC)**把 Unity 编辑器暴露给外部 AI Agent。Agent 写一个请求 JSON 文件;编辑器内的轮询主机只认领最新的最终请求、丢弃较旧的待处理请求,在主线程执行对应命令、再写回一个响应 JSON 文件。无 socket、无原生插件——只用文件。
+Unity Agent Bridge 是一个**仅编辑器**的 Unity 包,通过**文件通讯(file-IPC)**把 Unity 编辑器暴露给外部 AI Agent。Agent 一次写一个请求 JSON;编辑器认领并清理上一轮文件,在主线程执行对应命令,再写回一个响应 JSON。无 socket、无原生插件——只用文件。
 
 ## 为什么用文件通讯
 
@@ -24,6 +24,8 @@ agent ──> .agentbridge/requests/{id}.request.json
                       │  分发 → 主线程上的 handler
 agent <── .agentbridge/responses/{id}.response.json
 ```
+
+协议是严格单通讯:Agent 必须读完当前响应后才能发送下一请求。下一请求同时充当“上一响应已读”的确认,Unity 会在认领它之前清掉旧响应、旧请求和临时文件;当前响应则保留到下一轮,保证 Agent 有时间读取。正常空闲时只会留下一份当前响应。
 
 **请求信封**
 
@@ -49,14 +51,14 @@ agent <── .agentbridge/responses/{id}.response.json
 |---|---|
 | `ping` | 连通性测试,返回 `pong` + Unity 版本 |
 | `list_commands` | 列出所有命令及描述/参数 schema(+ `commandsVersion`) |
-| `get_hierarchy` | 场景层级树(`maxDepth` / 根过滤) |
-| `get_object` | 某 GameObject 的组件及其顶层属性 |
+| `get_hierarchy` | 场景层级树(默认 `maxDepth=4`,支持 `root` 收窄) |
+| `get_object` | 某 GameObject 的组件及属性;组件项可直接传给 `set_property` |
 | `get_selection` | 当前选中的 GameObject(无选中返回 `[]`) |
-| `list_assets` | 按 `type` / `folder` / `query` 查工程资产 |
+| `list_assets` | 按 `type` / `folder` / `query` 查工程资产,默认最多 200 条 |
 | `capture_game_view` | 将当前 Game 视图捕获为 PNG,写入 `.agentbridge/screenshots`,返回文件路径和元数据 |
 | `set_game_view_resolution` | 设置 Game View 固定分辨率,必要时添加自定义尺寸 |
-| `play_scene` | 按场景路径或 Build Settings 下标打开指定场景并请求进入 Play Mode |
-| `create_object` | 创建 empty / primitive / prefab 实例(可指定父级) |
+| `play_scene` | 空参运行当前场景;可指定场景,或用 `stop=true` 停止 |
+| `create_object` | 创建 empty / primitive / prefab,可同时设置父级与初始 Transform |
 | `set_property` | 按嵌套路径改组件属性(记录 Undo、标脏场景) |
 | `delete_object` | 删除 GameObject |
 | `invoke_menu` | 执行编辑器菜单项(逃生舱) |

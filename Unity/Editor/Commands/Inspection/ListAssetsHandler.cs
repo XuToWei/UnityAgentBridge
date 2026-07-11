@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Newtonsoft.Json.Linq;
@@ -7,14 +8,15 @@ namespace AgentBridge
 {
     /// <summary>
     /// list_assets(只读):按条件查工程资产。params 可带 type / folder / query(底层 AssetDatabase.FindAssets)。
-    /// 无任何 filter 时限数(NoFilterCap)并标 truncated,避免大工程一次倒出上万条。
+    /// 默认最多返回 DefaultLimit 条，可用 limit 调整，避免大工程一次倒出过多 JSON。
     /// </summary>
     public sealed class ListAssetsHandler : ICommandHandler
     {
-        private const int NoFilterCap = 1000;
+        private const int DefaultLimit = 200;
+        private const int MaxLimit = 1000;
 
         public string Command => "list_assets";
-        public string Description => "按条件查工程资产(type/folder/query),返回 path+guid+type;无 filter 时限数";
+        public string Description => "按条件查工程资产(type/folder/query/limit),默认最多返回 200 条";
         public string Group => "Inspection";
         public bool CanDisable => true;
 
@@ -23,6 +25,12 @@ namespace AgentBridge
             var type = @params?["type"]?.Value<string>();
             var folder = @params?["folder"]?.Value<string>();
             var query = @params?["query"]?.Value<string>();
+            var limit = @params?["limit"]?.ToObject<int?>() ?? DefaultLimit;
+            if (limit <= 0)
+            {
+                throw new CommandException(ErrorCodes.InvalidParams, "limit 必须是正整数");
+            }
+            limit = Math.Min(limit, MaxLimit);
 
             var parts = new List<string>();
             if (!string.IsNullOrEmpty(query))
@@ -39,16 +47,7 @@ namespace AgentBridge
                 ? AssetDatabase.FindAssets(filter, new[] { folder })
                 : AssetDatabase.FindAssets(filter);
 
-            var noFilter = string.IsNullOrEmpty(filter) && string.IsNullOrEmpty(folder);
-            var truncated = false;
-            IEnumerable<string> use = guids;
-            if (noFilter && guids.Length > NoFilterCap)
-            {
-                use = guids.Take(NoFilterCap);
-                truncated = true;
-            }
-
-            var items = use.Select(g =>
+            var items = guids.Select(g =>
             {
                 var path = AssetDatabase.GUIDToAssetPath(g);
                 return new { guid = g, path, t = AssetDatabase.GetMainAssetTypeAtPath(path) };
@@ -60,17 +59,27 @@ namespace AgentBridge
                 items = items.Where(x => x.t != null && (x.t.Name == type || x.t.FullName == type));
             }
 
-            var assets = items
+            var selected = items
                 .Select(x => new { path = x.path, guid = x.guid, type = x.t != null ? x.t.FullName : null })
+                .Take(limit + 1)
                 .ToArray();
+            var truncated = selected.Length > limit;
+            var assets = truncated ? selected.Take(limit).ToArray() : selected;
 
             return new { assets, count = assets.Length, truncated };
         }
 
         public JObject GetParamsSchema()
         {
-            return JObject.Parse(
-                @"{""type"":""object"",""properties"":{""type"":{""type"":""string""},""folder"":{""type"":""string""},""query"":{""type"":""string""}}}");
+            return JObject.Parse(@"{
+  ""type"": ""object"",
+  ""properties"": {
+    ""type"": { ""type"": ""string"" },
+    ""folder"": { ""type"": ""string"" },
+    ""query"": { ""type"": ""string"" },
+    ""limit"": { ""type"": ""integer"", ""minimum"": 1, ""maximum"": 1000, ""default"": 200 }
+  }
+}");
         }
     }
 }

@@ -7,7 +7,7 @@ using Newtonsoft.Json.Linq;
 namespace AgentBridge
 {
     /// <summary>
-    /// 文件通讯模块：负责目录布局、请求认领、协议身份绑定及响应事务提交。
+    /// 文件通讯模块：维持单请求、单响应，并负责认领、校验与清理通讯文件。
     /// 不依赖 Unity API，可用临时目录直接验证文件协议。
     /// </summary>
     public sealed class FileChannel
@@ -17,9 +17,6 @@ namespace AgentBridge
         private const string RequestTempSuffix = RequestSuffix + ".tmp";
         private const string ResponseTempSuffix = ResponseSuffix + ".tmp";
 
-        /// <summary>
-        /// FileChannel 创建的认领凭据。调用方只能读取规范身份和解析结果，不能接触或伪造物理路径。
-        /// </summary>
         public sealed class ClaimedRequest
         {
             internal ClaimedRequest(
@@ -74,10 +71,6 @@ namespace AgentBridge
             EnsureGitIgnore();
         }
 
-        /// <summary>
-        /// 在根目录写 .gitignore(内容为 "*"),让运行时请求、响应和临时文件不进入版本库。
-        /// 已存在则不改，尊重用户内容。
-        /// </summary>
         private void EnsureGitIgnore()
         {
             var path = Path.Combine(RootDir, ".gitignore");
@@ -92,29 +85,69 @@ namespace AgentBridge
             }
             catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
             {
-                /* 写不成不影响桥接功能 */
+                // .gitignore 写入失败不影响通讯。
             }
         }
 
         /// <summary>
-        /// 优先收回 processing 中断 claim；没有中断 claim 时才认领 requests 中的最新请求。
-        /// 调用方不需要了解 orphan-first 的事务顺序。
+        /// 每次只取一个请求。若上次在 processing 中中断，先返回 INTERRUPTED；
+        /// 否则认领 requests 中最新的最终请求，并清掉其余通讯文件。
         /// </summary>
         public bool TryTakeNext(out ClaimedRequest claimed)
         {
-            if (!TryTakeOrphan(out claimed) && !TryClaimLatest(out claimed))
+            if (TryRecoverProcessing(out claimed))
+            {
+                return true;
+            }
+
+            return TryClaimLatest(out claimed);
+        }
+
+        /// <summary>
+        /// 恢复上次中断的单个请求。响应已经发布时只补清理 processing；
+        /// 尚未发布时丢弃所有抢发请求并返回 INTERRUPTED，避免执行结果不确定时继续下一条。
+        /// </summary>
+        private bool TryRecoverProcessing(out ClaimedRequest claimed)
+        {
+            claimed = null;
+            if (!TryKeepLatest(ProcessingDir, RequestSuffix, out var activePath))
             {
                 return false;
             }
 
-            // 单请求串行协议：claim 产生后、响应发布前，Agent 不会合法地写下一条请求。
-            DeleteFiles(RequestsDir, RequestTempSuffix);
+            var id = StripSuffix(Path.GetFileName(activePath), RequestSuffix);
+            var responsePath = ResponsePathForId(id);
+            if (File.Exists(responsePath))
+            {
+                // 响应是提交点。只保留它，释放可能因 reload 遗留的 processing 文件。
+                if (!DeleteFiles(ResponsesDir, ResponseTempSuffix) ||
+                    !DeleteFilesExcept(ResponsesDir, ResponseSuffix, responsePath) ||
+                    !TryDeleteFile(activePath))
+                {
+                    return false;
+                }
+
+                return false;
+            }
+
+            // 没有响应时无法判断命令是否执行过。清空其它轮次，只返回一次 INTERRUPTED。
+            if (!ClearRequests() || !ClearResponses())
+            {
+                return false;
+            }
+
+            claimed = new ClaimedRequest(
+                this,
+                id,
+                null,
+                ErrorCodes.Interrupted,
+                "request was interrupted before its response was committed");
             return true;
         }
 
         /// <summary>
-        /// 认领最新最终请求。旧最终请求会先被丢弃；processing 非空时不再认领新请求。
-        /// 请求信封缺字段、身份不一致或版本不支持时返回不可分发的 claim。
+        /// 只认领最新最终请求。新请求是上一响应已被 Agent 读取的隐式确认，
+        /// 因此认领前清掉旧响应、旧请求和临时文件；清理失败则本轮不执行。
         /// </summary>
         private bool TryClaimLatest(out ClaimedRequest claimed)
         {
@@ -124,87 +157,36 @@ namespace AgentBridge
                 return false;
             }
 
-            var files = GetFiles(RequestsDir, RequestSuffix);
-            if (files.Count == 0)
+            if (!TryKeepLatest(RequestsDir, RequestSuffix, out var latest))
             {
                 return false;
             }
 
-            files.Sort(CompareByWriteTimeThenName);
-            var latest = files[files.Count - 1];
-            for (var i = 0; i < files.Count - 1; i++)
+            // 单通讯协议下，最终请求出现后不应再有写入中的请求。
+            if (!DeleteFiles(RequestsDir, RequestTempSuffix) || !ClearResponses())
             {
-                if (!TryDeleteFile(files[i]))
-                {
-                    return false;
-                }
+                return false;
             }
 
             var latestName = Path.GetFileName(latest);
-            var processingPath = SafeChildPath(ProcessingDir, latestName);
+            var processingPath = Path.Combine(ProcessingDir, latestName);
             try
             {
-                File.Move(latest, processingPath); // 同卷 rename 原子认领
+                File.Move(latest, processingPath);
             }
             catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
             {
                 return false;
             }
 
-            var canonicalId = StripSuffix(latestName, RequestSuffix);
-
-            // id 不得复用。已有最终响应说明该 claim 已提交，只补 processing 清理，不重复执行。
-            if (FinishPublishedClaim(canonicalId, true))
-            {
-                return false;
-            }
-
-            claimed = ParseClaim(canonicalId);
+            var id = StripSuffix(latestName, RequestSuffix);
+            claimed = ParseClaim(id);
             return true;
         }
 
         /// <summary>
-        /// 取上次执行中断留下的 processing claim。若存在多个，只保留最新一个；
-        /// 若对应最终响应已存在，则仅补释放，不生成 INTERRUPTED 覆盖成功响应。
-        /// </summary>
-        private bool TryTakeOrphan(out ClaimedRequest claimed)
-        {
-            claimed = null;
-            var files = GetFiles(ProcessingDir, RequestSuffix);
-            if (files.Count == 0)
-            {
-                return false;
-            }
-
-            files.Sort(CompareByWriteTimeThenName);
-            var latest = files[files.Count - 1];
-            for (var i = 0; i < files.Count - 1; i++)
-            {
-                if (!TryDeleteFile(files[i]))
-                {
-                    throw new IOException("older orphan claim could not be discarded: " + files[i]);
-                }
-            }
-
-            var latestName = Path.GetFileName(latest);
-            var canonicalId = StripSuffix(latestName, RequestSuffix);
-            if (FinishPublishedClaim(canonicalId, true))
-            {
-                return false;
-            }
-
-            claimed = new ClaimedRequest(
-                this,
-                canonicalId,
-                null,
-                ErrorCodes.Interrupted,
-                "request was interrupted before its response was committed");
-            return true;
-        }
-
-        /// <summary>
-        /// 原子提交响应。最终文件发布是 commit point；在此之前失败会保留 claim 和旧响应。
-        /// 发布后才清理其它响应并 best-effort 释放 processing claim。
+        /// 原子发布当前响应。成功后删除 processing 请求；正常空闲时只留下这一份响应，
+        /// 它会在下一条请求被认领前由 Unity 清理。
         /// </summary>
         public void Commit(ClaimedRequest claim, Response response, string commandsVersion)
         {
@@ -218,31 +200,33 @@ namespace AgentBridge
                 return;
             }
 
-            // Unity 是响应目录唯一写入者，提交前可直接清理上次失败留下的临时响应。
-            DeleteFiles(ResponsesDir, ResponseTempSuffix);
+            var responsePath = ResponsePathForId(claim.Id);
+            var processingPath = ProcessingPathForId(claim.Id);
 
-            // 幂等恢复：final 已存在表示之前已经越过 commit point，绝不覆盖。
-            if (FinishPublishedClaim(claim.Id, false))
+            // domain reload 可能发生在响应发布后、processing 删除前。
+            if (File.Exists(responsePath))
             {
                 claim.IsCommitted = true;
+                TryDeleteFile(processingPath);
                 return;
             }
-
-            // final 已被后续事务清理时，旧 claim 不能再次发布并覆盖更新响应。
-            if (!File.Exists(ProcessingPathForId(claim.Id)))
+            if (!File.Exists(processingPath))
             {
                 throw new InvalidOperationException("claim is no longer active: " + claim.Id);
             }
 
             PrepareResponseForPublish(response, claim.Id, commandsVersion);
-            var json = JsonConvert.SerializeObject(response, Formatting.Indented);
-            var responsePath = ResponsePathForId(claim.Id);
-            var tempPath = responsePath + ".tmp";
+            if (!ClearResponses())
+            {
+                throw new IOException("previous response files could not be cleared");
+            }
 
+            var tempPath = responsePath + ".tmp";
+            var json = JsonConvert.SerializeObject(response, Formatting.Indented);
             try
             {
                 File.WriteAllText(tempPath, json);
-                File.Move(tempPath, responsePath); // 同目录原子发布
+                File.Move(tempPath, responsePath);
                 claim.IsCommitted = true;
             }
             catch
@@ -251,22 +235,22 @@ namespace AgentBridge
                 throw;
             }
 
-            // final 已对 Agent 可见。之后的清理失败不能把已提交事务改回失败。
-            FinishPublishedClaim(claim.Id, false);
+            // 响应已可见，processing 清理失败不影响结果；下次轮询会补清理。
+            TryDeleteFile(processingPath);
         }
 
         private static void PrepareResponseForPublish(
             Response response,
-            string canonicalId,
+            string id,
             string commandsVersion)
         {
-            if (canonicalId == null)
+            if (id == null)
             {
                 throw new InvalidOperationException("response id must not be null");
             }
 
             response.V = 1;
-            response.Id = canonicalId;
+            response.Id = id;
             response.CommandsVersion = commandsVersion ?? "";
             if (string.IsNullOrEmpty(response.Timestamp))
             {
@@ -299,37 +283,33 @@ namespace AgentBridge
             throw new InvalidOperationException("response status must be 'ok' or 'error'");
         }
 
-        private ClaimedRequest ParseClaim(string canonicalId)
+        private ClaimedRequest ParseClaim(string id)
         {
-            var processingPath = ProcessingPathForId(canonicalId);
             Request request;
             try
             {
-                request = JsonConvert.DeserializeObject<Request>(File.ReadAllText(processingPath));
+                request = JsonConvert.DeserializeObject<Request>(
+                    File.ReadAllText(ProcessingPathForId(id)));
             }
             catch (JsonException)
             {
                 return new ClaimedRequest(
-                    this, canonicalId, null, ErrorCodes.InvalidRequest, "failed to parse request json");
+                    this, id, null, ErrorCodes.InvalidRequest, "failed to parse request json");
             }
 
-            var error = ValidateRequest(request, canonicalId);
-            if (error != null)
-            {
-                return new ClaimedRequest(
-                    this, canonicalId, null, ErrorCodes.InvalidRequest, error);
-            }
-
-            return new ClaimedRequest(this, canonicalId, request, null, null);
+            var error = ValidateRequest(request, id);
+            return error == null
+                ? new ClaimedRequest(this, id, request, null, null)
+                : new ClaimedRequest(this, id, null, ErrorCodes.InvalidRequest, error);
         }
 
-        private static string ValidateRequest(Request request, string canonicalId)
+        private static string ValidateRequest(Request request, string id)
         {
             if (request == null)
             {
                 return "request json must be an object";
             }
-            if (string.IsNullOrEmpty(canonicalId))
+            if (string.IsNullOrEmpty(id))
             {
                 return "request filename id must not be empty";
             }
@@ -337,7 +317,7 @@ namespace AgentBridge
             {
                 return $"unsupported request version '{request.V}'; expected 1";
             }
-            if (!string.Equals(request.Id, canonicalId, StringComparison.Ordinal))
+            if (!string.Equals(request.Id, id, StringComparison.Ordinal))
             {
                 return "request body id must exactly match filename id";
             }
@@ -358,13 +338,26 @@ namespace AgentBridge
             }
         }
 
+        private bool ClearRequests()
+        {
+            var finalsCleared = DeleteFiles(RequestsDir, RequestSuffix);
+            var tempsCleared = DeleteFiles(RequestsDir, RequestTempSuffix);
+            return finalsCleared && tempsCleared;
+        }
+
+        private bool ClearResponses()
+        {
+            var finalsCleared = DeleteFiles(ResponsesDir, ResponseSuffix);
+            var tempsCleared = DeleteFiles(ResponsesDir, ResponseTempSuffix);
+            return finalsCleared && tempsCleared;
+        }
+
         private static List<string> GetFiles(string directory, string suffix)
         {
             var result = new List<string>();
             foreach (var file in Directory.GetFiles(directory, "*" + suffix))
             {
-                var name = Path.GetFileName(file);
-                if (name.EndsWith(suffix, StringComparison.Ordinal))
+                if (Path.GetFileName(file).EndsWith(suffix, StringComparison.Ordinal))
                 {
                     result.Add(file);
                 }
@@ -372,19 +365,52 @@ namespace AgentBridge
             return result;
         }
 
-        private static void DeleteFiles(string directory, string suffix)
+        private static bool TryKeepLatest(string directory, string suffix, out string latest)
         {
-            try
+            latest = null;
+            var files = GetFiles(directory, suffix);
+            if (files.Count == 0)
             {
-                foreach (var file in GetFiles(directory, suffix))
+                return false;
+            }
+
+            files.Sort(CompareByWriteTimeThenName);
+            latest = files[files.Count - 1];
+            for (var i = 0; i < files.Count - 1; i++)
+            {
+                if (!TryDeleteFile(files[i]))
                 {
-                    TryDeleteFile(file);
+                    latest = null;
+                    return false;
                 }
             }
-            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+            return true;
+        }
+
+        private static bool DeleteFiles(string directory, string suffix)
+        {
+            var success = true;
+            foreach (var file in GetFiles(directory, suffix))
             {
-                /* 临时文件清理失败不影响已认领请求或响应提交 */
+                if (!TryDeleteFile(file))
+                {
+                    success = false;
+                }
             }
+            return success;
+        }
+
+        private static bool DeleteFilesExcept(string directory, string suffix, string keepPath)
+        {
+            var success = true;
+            foreach (var file in GetFiles(directory, suffix))
+            {
+                if (!PathEquals(file, keepPath) && !TryDeleteFile(file))
+                {
+                    success = false;
+                }
+            }
+            return success;
         }
 
         private static int CompareByWriteTimeThenName(string left, string right)
@@ -395,72 +421,14 @@ namespace AgentBridge
                 : string.Compare(Path.GetFileName(left), Path.GetFileName(right), StringComparison.Ordinal);
         }
 
-        private string ResponsePathForId(string canonicalId)
+        private string ResponsePathForId(string id)
         {
-            return SafeChildPath(ResponsesDir, canonicalId + ResponseSuffix);
+            return Path.Combine(ResponsesDir, id + ResponseSuffix);
         }
 
-        private string ProcessingPathForId(string canonicalId)
+        private string ProcessingPathForId(string id)
         {
-            return SafeChildPath(ProcessingDir, canonicalId + RequestSuffix);
-        }
-
-        /// <summary>
-        /// final 存在即代表事务已提交。strictRelease 用于认领前阻止未释放 claim 与新请求并行。
-        /// </summary>
-        private bool FinishPublishedClaim(string canonicalId, bool strictRelease)
-        {
-            var responsePath = ResponsePathForId(canonicalId);
-            if (!File.Exists(responsePath))
-            {
-                return false;
-            }
-
-            var released = TryDeleteFile(ProcessingPathForId(canonicalId));
-            PruneResponses(responsePath);
-            if (strictRelease && !released)
-            {
-                throw new IOException("published processing claim could not be released: " + canonicalId);
-            }
-            return true;
-        }
-
-        private static string SafeChildPath(string directory, string fileName)
-        {
-            if (string.IsNullOrEmpty(fileName) || Path.IsPathRooted(fileName) ||
-                !string.Equals(fileName, Path.GetFileName(fileName), StringComparison.Ordinal))
-            {
-                throw new InvalidDataException("path must be a direct child filename: " + fileName);
-            }
-
-            var root = EnsureTrailingSeparator(Path.GetFullPath(directory));
-            var fullPath = Path.GetFullPath(Path.Combine(root, fileName));
-            var comparison = Path.DirectorySeparatorChar == '\\'
-                ? StringComparison.OrdinalIgnoreCase
-                : StringComparison.Ordinal;
-            if (!fullPath.StartsWith(root, comparison))
-            {
-                throw new InvalidDataException("path escapes channel directory: " + fileName);
-            }
-            return fullPath;
-        }
-
-        private void PruneResponses(string keepPath)
-        {
-            try
-            {
-                foreach (var file in GetFiles(ResponsesDir, ResponseSuffix))
-                {
-                    if (!PathEquals(file, keepPath))
-                    {
-                        TryDeleteFile(file);
-                    }
-                }
-            }
-            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
-            {
-                /* final 已发布，清理失败不回滚事务 */
-            }
+            return Path.Combine(ProcessingDir, id + RequestSuffix);
         }
 
         private static bool PathEquals(string left, string right)
@@ -469,14 +437,6 @@ namespace AgentBridge
                 ? StringComparison.OrdinalIgnoreCase
                 : StringComparison.Ordinal;
             return string.Equals(Path.GetFullPath(left), Path.GetFullPath(right), comparison);
-        }
-
-        private static string EnsureTrailingSeparator(string path)
-        {
-            return path.EndsWith(Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal)
-                || path.EndsWith(Path.AltDirectorySeparatorChar.ToString(), StringComparison.Ordinal)
-                ? path
-                : path + Path.DirectorySeparatorChar;
         }
 
         private static bool TryDeleteFile(string path)

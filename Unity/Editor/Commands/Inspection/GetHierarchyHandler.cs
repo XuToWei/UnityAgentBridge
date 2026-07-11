@@ -8,18 +8,24 @@ namespace AgentBridge
 {
     /// <summary>
     /// get_hierarchy(只读):返回所有已加载场景的层级树。
-    /// params 可选 root(ObjectRef,只返回该子树)/ maxDepth(限制深度,缺省无限)。
+    /// params 可选 root(ObjectRef,只返回该子树)/ maxDepth(默认 4,-1 为无限)。
     /// </summary>
     public sealed class GetHierarchyHandler : ICommandHandler
     {
+        private const int DefaultMaxDepth = 4;
+
         public string Command => "get_hierarchy";
-        public string Description => "返回所有已加载场景的层级树(节点 name/path/instanceId/active/children);可选 root/maxDepth 收窄";
+        public string Description => "返回已加载场景层级树;默认 maxDepth=4,可用 root 收窄或 maxDepth=-1 取完整层级";
         public string Group => "Inspection";
         public bool CanDisable => true;
 
         public object Execute(JObject @params)
         {
-            var maxDepth = @params?["maxDepth"]?.ToObject<int?>() ?? -1; // -1 = 无限
+            var maxDepth = @params?["maxDepth"]?.ToObject<int?>() ?? DefaultMaxDepth;
+            if (maxDepth < -1)
+            {
+                throw new CommandException(ErrorCodes.InvalidParams, "maxDepth 必须为 -1 或非负整数");
+            }
             var rootRef = @params?["root"]?.ToObject<ObjectRef>();
 
             if (rootRef != null)
@@ -71,14 +77,32 @@ namespace AgentBridge
                 path = SceneObjectResolver.GetPath(t),
                 instanceId = t.gameObject.GetInstanceID(),
                 active = t.gameObject.activeSelf,
+                hasChildren = t.childCount > 0,
                 children
             };
         }
 
         public JObject GetParamsSchema()
         {
-            return JObject.Parse(
-                @"{""type"":""object"",""properties"":{""root"":{""type"":""object""},""maxDepth"":{""type"":""integer""}}}");
+            return JObject.Parse(@"{
+  ""type"": ""object"",
+  ""properties"": {
+    ""root"": {
+      ""type"": ""object"",
+      ""description"": ""可选根对象;path 或 instanceId 至少提供一个。"",
+      ""properties"": {
+        ""path"": { ""type"": ""string"" },
+        ""instanceId"": { ""type"": ""integer"" }
+      }
+    },
+    ""maxDepth"": {
+      ""type"": ""integer"",
+      ""minimum"": -1,
+      ""default"": 4,
+      ""description"": ""返回深度;默认 4,-1 表示不限。""
+    }
+  }
+}");
         }
     }
 }

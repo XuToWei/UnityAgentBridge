@@ -14,7 +14,7 @@
 
 1. **原子写请求** —— 永远先写 `requests/{id}.request.json.tmp`,再 rename 成 `requests/{id}.request.json`。**绝不直接写最终名**(会被 Unity 读到半截)。
 2. **id 唯一且四处一致** —— `{id}` 由你生成,**每条请求全新、绝不复用**(即便重试也换新 id);请求文件名、请求 JSON 的 `id`、响应文件名、响应 JSON 的 `id` 必须完全一致。建议使用跨平台安全格式:`[A-Za-z0-9][A-Za-z0-9_-]{0,63}`。
-3. **发一条、等一条、读完再发下一条** —— 不要并发堆多条请求;若 `requests/` 同时存在多条最终请求,Unity 只认领最新一条并删除其它请求(不会给旧请求写响应);`responses/` 也只保留最新一条响应。
+3. **发一条、等一条、读完再发下一条** —— 不要并发堆多条请求;若 `requests/` 同时存在多条最终请求,Unity 只认领最新一条并删除其它请求(不会给旧请求写响应)。下一条请求会被视为“上一响应已读”的确认,Unity 会在认领它之前清掉上一轮通讯文件。
 4. **启动只调一次 `list_commands` 并记住结果** —— 命令清单不在文档里写死,必须运行时发现;调一次、缓存清单 + `commandsVersion`,之后**一直用缓存,不要重复调**。
 5. **仅当命令集变了才刷新** —— 只有响应的 `commandsVersion` 与缓存不一致、装/卸/启停扩展后、或收到 `UNKNOWN_COMMAND` 时,才重调一次 `list_commands`;其余时候不重调。
 
@@ -39,9 +39,9 @@ Agent ↔ Unity 通过**文件**通讯,无网络。先定位 Unity 工程目录 
 
 1. **原子写请求**(铁律 1):先写 `requests/{id}.request.json.tmp`,再 rename 成 `requests/{id}.request.json`。
 2. **轮询响应**:读 `responses/{id}.response.json`,**文件出现即为完成**(Unity 也用 tmp→rename 原子写,不会读到半截)。
-3. **读完不必删** —— 清理由 Unity 端负责。
+3. **读完不必删** —— 当前响应会保留供你读取;你发出下一条请求后,Unity 会在认领新请求前清掉上一响应。
 
-> 清理机制:Unity 端认领请求时只选择 `requests/` 中最新的最终 `.request.json`;其它最终请求会被删除且不会产生响应。单独存在的 `.request.json.tmp` 会被忽略;成功取得一个 claim 后、发布响应前,Unity 会删除 `requests/` 中残留的请求临时文件。Unity 先原子发布当前 `{id}.response.json`,成功后才清理其它最终响应并释放 `processing/` claim,所以写入失败不会先抹掉上一份有效响应;正常情况下目录里**只有最新一次响应**——这正是铁律 3「发一条、等一条」的原因。
+> 清理机制:Unity 只选择 `requests/` 中最新的最终 `.request.json`;认领前删除其它最终请求、请求临时文件和上一轮响应。请求原子移动到 `processing/` 后才会执行;当前响应通过临时文件原子发布,随后删除 `processing/` 请求。正常空闲时三个目录中只保留**当前这一份响应**;它必须留到下一条请求出现,因为没有额外 ACK 时 Unity 无法提前判断 Agent 是否已经读完。单独存在、尚未 rename 的 `.request.json.tmp` 会被忽略,避免 Unity 读到半截内容。
 
 **请求** `{id}.request.json`:
 ```json
@@ -144,7 +144,7 @@ handler 也可返回自有错误码(如 `MENU_NOT_FOUND`),含义见该命令 `de
 3. **原子写**:请求 JSON 的 `id` 必须与文件名 `{id}` 完全一致;先写 `<root>/requests/{id}.request.json.tmp`,**再改名**成 `<root>/requests/{id}.request.json`。**绝不能直接写最终名**(会被读到半截)。
    - Windows:`Move-Item -Force {id}.request.json.tmp {id}.request.json`
    - macOS/Linux:`mv {id}.request.json.tmp {id}.request.json`
-4. **等这一条的响应**:反复读 `<root>/responses/{id}.response.json`,直到该文件出现(约每 1 秒一次,最多等 ~30 秒;超时按失败处理)。**在读到它之前,绝不发下一条命令**——Unity 只认领最新最终请求,抢发会让旧请求被删除且没有响应;`responses/` 也只保留最新一条。
+4. **等这一条的响应**:反复读 `<root>/responses/{id}.response.json`,直到该文件出现(约每 1 秒一次,最多等 ~30 秒;超时按失败处理)。**在读到它之前,绝不发下一条命令**——下一条请求是上一响应“已读”的隐式确认;抢发会使上一响应被 Unity 清掉。
 5. **按 id 核对并处理**:确认响应 `id` 与你发的一致;`status=="ok"` 用 `result`,`status=="error"` 看 `error.code`(如 `INVALID_PARAMS` 改参数、`INTERRUPTED` 先确认副作用再换新 id 决定是否重发)。顺便对照响应里的 `commandsVersion`(见文末)。
 
 ### 完整示例:让 Unity 执行 ping

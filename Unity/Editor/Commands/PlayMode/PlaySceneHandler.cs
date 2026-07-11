@@ -10,7 +10,8 @@ namespace AgentBridge
 {
     /// <summary>
     /// play_scene(运行控制):打开指定场景并请求进入 Play Mode。
-    /// params:scenePath 或 buildIndex 二选一;ifUnsaved(error/save/discard,默认 error);requireInBuildSettings(默认 false)。
+    /// 空参数运行当前场景；也可用 scenePath/buildIndex 指定场景，或 stop=true 停止 Play Mode。
+    /// 切换场景时可用 ifUnsaved(error/save/discard,默认 error) 处理未保存内容。
     /// </summary>
     public sealed class PlaySceneHandler : ICommandHandler
     {
@@ -22,13 +23,18 @@ namespace AgentBridge
         public string Command => "play_scene";
 
         public string Description =>
-            "打开指定场景并请求进入 Play Mode:scenePath 或 buildIndex 二选一;ifUnsaved=error|save|discard;可 requireInBuildSettings";
+            "空参运行当前场景;可指定 scenePath/buildIndex,或 stop=true 停止 Play Mode";
 
         public string Group => "PlayMode";
         public bool CanDisable => true;
 
         public object Execute(JObject @params)
         {
+            if (GetOptionalBool(@params, "stop", false))
+            {
+                return RequestStopPlayMode();
+            }
+
             if (EditorApplication.isPlaying)
             {
                 throw new CommandException(PlayModeErrorCodes.PlayModeAlreadyActive, "Unity 已在 Play Mode,不能切换场景后重新运行。");
@@ -40,8 +46,9 @@ namespace AgentBridge
 
             var requireInBuildSettings = GetOptionalBool(@params, "requireInBuildSettings", false);
             var ifUnsaved = GetIfUnsaved(@params);
+            var useCurrentScene = !HasValue(@params?["scenePath"]) && !HasValue(@params?["buildIndex"]);
             var target = ResolveTargetScene(@params, requireInBuildSettings);
-            var alreadyOpen = IsOnlyOpenScene(target.Path);
+            var alreadyOpen = useCurrentScene || IsOnlyOpenScene(target.Path);
             var unsaved = HandleUnsavedScenes(ifUnsaved, alreadyOpen);
 
             var opened = false;
@@ -84,6 +91,26 @@ namespace AgentBridge
             };
         }
 
+        private static object RequestStopPlayMode()
+        {
+            var wasActive = EditorApplication.isPlaying || EditorApplication.isPlayingOrWillChangePlaymode;
+            if (wasActive)
+            {
+                EditorApplication.isPlaying = false;
+            }
+
+            return new
+            {
+                stopRequested = wasActive,
+                alreadyStopped = !wasActive,
+                playModeState = new
+                {
+                    isPlaying = EditorApplication.isPlaying,
+                    isPlayingOrWillChangePlaymode = EditorApplication.isPlayingOrWillChangePlaymode
+                }
+            };
+        }
+
         private static TargetScene ResolveTargetScene(JObject @params, bool requireInBuildSettings)
         {
             var scenePathToken = @params?["scenePath"];
@@ -91,9 +118,14 @@ namespace AgentBridge
             var hasScenePath = HasValue(scenePathToken);
             var hasBuildIndex = HasValue(buildIndexToken);
 
-            if (hasScenePath == hasBuildIndex)
+            if (hasScenePath && hasBuildIndex)
             {
-                throw new CommandException(ErrorCodes.InvalidParams, "scenePath 与 buildIndex 必须二选一且只能提供一个。");
+                throw new CommandException(ErrorCodes.InvalidParams, "scenePath 与 buildIndex 只能提供一个。");
+            }
+
+            if (!hasScenePath && !hasBuildIndex)
+            {
+                return ResolveCurrentScene(requireInBuildSettings);
             }
 
             if (hasScenePath)
@@ -111,6 +143,27 @@ namespace AgentBridge
 
             var buildIndex = GetBuildIndex(buildIndexToken);
             return ResolveBuildIndex(buildIndex);
+        }
+
+        private static TargetScene ResolveCurrentScene(bool requireInBuildSettings)
+        {
+            var scene = SceneManager.GetActiveScene();
+            if (!scene.IsValid() || !scene.isLoaded)
+            {
+                throw new CommandException(PlayModeErrorCodes.SceneNotFound, "当前没有可运行的已加载场景。");
+            }
+
+            var path = (scene.path ?? "").Replace('\\', '/');
+            var buildSettings = string.IsNullOrEmpty(path)
+                ? new BuildSettingsInfo(false, -1, false)
+                : FindBuildSettings(path);
+            if (requireInBuildSettings && (!buildSettings.Present || !buildSettings.Enabled))
+            {
+                throw new CommandException(PlayModeErrorCodes.SceneNotInBuildSettings,
+                    $"当前场景不在 Build Settings 已启用列表中:'{path}'");
+            }
+
+            return new TargetScene(path, scene.name, buildSettings);
         }
 
         private static string RequireScenePath(string scenePath)
@@ -362,8 +415,9 @@ namespace AgentBridge
             return JObject.Parse(@"{
   ""type"": ""object"",
   ""properties"": {
-    ""scenePath"": { ""type"": ""string"", ""description"": ""Assets/ 下的 .unity 场景路径,例如 Assets/Scenes/Main.unity;与 buildIndex 二选一。"" },
-    ""buildIndex"": { ""type"": ""integer"", ""minimum"": 0, ""description"": ""Build Settings 中已启用场景列表的运行时 build index;与 scenePath 二选一。"" },
+    ""stop"": { ""type"": ""boolean"", ""description"": ""true 时停止 Play Mode,其它参数忽略;默认 false。"" },
+    ""scenePath"": { ""type"": ""string"", ""description"": ""可选 Assets/ 下的 .unity 场景路径;与 buildIndex 只能提供一个。均不提供时运行当前场景。"" },
+    ""buildIndex"": { ""type"": ""integer"", ""minimum"": 0, ""description"": ""可选 Build Settings 运行时 build index;与 scenePath 只能提供一个。"" },
     ""requireInBuildSettings"": { ""type"": ""boolean"", ""description"": ""scenePath 是否必须存在于 Build Settings 且已启用,默认 false。"" },
     ""ifUnsaved"": { ""type"": ""string"", ""enum"": [""error"", ""save"", ""discard""], ""description"": ""切换场景前如何处理未保存场景,默认 error。"" }
   }

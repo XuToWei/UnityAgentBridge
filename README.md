@@ -6,7 +6,7 @@
 
 ---
 
-Unity Agent Bridge is an Editor-only Unity package that exposes the Unity Editor to an external AI agent through **file-based IPC**. The agent writes a request JSON file; a polling host inside the Editor claims the latest final request, discards older pending requests, runs the matching command on the main thread, and writes a response JSON file back. No sockets, no native plugins — just files.
+Unity Agent Bridge is an Editor-only Unity package that exposes the Unity Editor to an external AI agent through **file-based IPC**. The agent writes one request JSON at a time; the Editor claims it, clears the previous exchange, runs the matching command on the main thread, and writes one response JSON back. No sockets, no native plugins — just files.
 
 ## Why file-IPC
 
@@ -24,6 +24,8 @@ agent ──> .agentbridge/requests/{id}.request.json
                       │  dispatch → handler on main thread
 agent <── .agentbridge/responses/{id}.response.json
 ```
+
+The protocol is strictly single-flight: the agent must read the current response before sending another request. That next request is also the implicit acknowledgement for the previous response, so Unity removes the old response, stale requests, and temporary files before claiming it. The current response remains available until the next exchange; during normal idle operation it is the only JSON left in the channel.
 
 **Request envelope**
 
@@ -49,14 +51,14 @@ prefer IDs matching `[A-Za-z0-9][A-Za-z0-9_-]{0,63}`.
 |---|---|
 | `ping` | Connectivity check; returns `pong` + Unity version |
 | `list_commands` | List available commands with description + params schema (+ `commandsVersion`) |
-| `get_hierarchy` | Scene hierarchy tree (`maxDepth` / root filter) |
-| `get_object` | A GameObject's components and their top-level properties |
+| `get_hierarchy` | Scene hierarchy tree (defaults to `maxDepth=4`; supports narrowing by `root`) |
+| `get_object` | A GameObject's components/properties; component items can be passed directly to `set_property` |
 | `get_selection` | Currently selected GameObjects (`[]` when none) |
-| `list_assets` | Query project assets by `type` / `folder` / `query` |
+| `list_assets` | Query project assets by `type` / `folder` / `query`; defaults to 200 results |
 | `capture_game_view` | Capture the current Game view as PNG under `.agentbridge/screenshots`; returns file path + metadata |
 | `set_game_view_resolution` | Set the Game View to a fixed resolution, creating a custom size if needed |
-| `play_scene` | Open a specified scene by path/build index and request Play Mode |
-| `create_object` | Create empty / primitive / prefab instance (optional parent) |
+| `play_scene` | Play the current scene with empty params; optionally select a scene or use `stop=true` |
+| `create_object` | Create empty / primitive / prefab with optional parent and initial Transform |
 | `set_property` | Set a component property by nested path (records Undo, marks scene dirty) |
 | `delete_object` | Delete a GameObject |
 | `invoke_menu` | Execute an editor menu item (escape hatch) |
