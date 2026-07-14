@@ -272,7 +272,7 @@ namespace AgentBridge
             }
             catch (Exception ex)
             {
-                throw new CommandException(PlayModeErrorCodes.SceneOpenFailed, "打开场景失败: " + ex.Message);
+                throw new CommandException(PlayModeErrorCodes.SceneOpenFailed, $"打开场景失败: {ex.Message}");
             }
         }
 
@@ -284,7 +284,7 @@ namespace AgentBridge
             }
             catch (Exception ex)
             {
-                throw new CommandException(PlayModeErrorCodes.EnterPlayModeFailed, "请求进入 Play Mode 失败: " + ex.Message);
+                throw new CommandException(PlayModeErrorCodes.EnterPlayModeFailed, $"请求进入 Play Mode 失败: {ex.Message}");
             }
         }
 
@@ -319,7 +319,7 @@ namespace AgentBridge
             }
             if (token.Type != JTokenType.Boolean)
             {
-                throw new CommandException(ErrorCodes.InvalidParams, name + " 必须是 boolean。");
+                throw new CommandException(ErrorCodes.InvalidParams, $"{name} 必须是 boolean。");
             }
             return token.Value<bool>();
         }
@@ -328,7 +328,7 @@ namespace AgentBridge
         {
             if (token.Type != JTokenType.String)
             {
-                throw new CommandException(ErrorCodes.InvalidParams, name + " 必须是 string。");
+                throw new CommandException(ErrorCodes.InvalidParams, $"{name} 必须是 string。");
             }
             return token.Value<string>();
         }

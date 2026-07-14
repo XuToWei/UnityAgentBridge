@@ -23,6 +23,11 @@ namespace AgentBridge
 
             try
             {
+                if (!Directory.Exists(BridgeSettings.RootDir))
+                {
+                    throw new DirectoryNotFoundException("Agent Bridge 未启用");
+                }
+
                 Directory.CreateDirectory(ResultDirectory);
                 EnforceResultBudget(record);
                 var json = JsonConvert.SerializeObject(record, Formatting.Indented);
@@ -36,7 +41,7 @@ namespace AgentBridge
             catch (Exception ex) when (IsIoException(ex))
             {
                 throw new CommandException(TestErrorCodes.TestResultIoError,
-                    "写入测试结果失败:" + ex.Message);
+                    $"写入测试结果失败:{ex.Message}");
             }
         }
 
@@ -79,7 +84,7 @@ namespace AgentBridge
                     return null;
                 }
 
-                var file = Directory.GetFiles(ResultDirectory, FilePrefix + "*" + FileExtension)
+                var file = Directory.GetFiles(ResultDirectory, $"{FilePrefix}*{FileExtension}")
                     .Select(path => new { path, written = File.GetLastWriteTimeUtc(path) })
                     .OrderByDescending(item => item.written)
                     .ThenByDescending(item => item.path, StringComparer.Ordinal)
@@ -89,7 +94,7 @@ namespace AgentBridge
             catch (Exception ex) when (IsIoException(ex))
             {
                 throw new CommandException(TestErrorCodes.TestResultIoError,
-                    "枚举测试结果失败:" + ex.Message);
+                    $"枚举测试结果失败:{ex.Message}");
             }
         }
 
@@ -132,7 +137,7 @@ namespace AgentBridge
 
         private static string GetPath(string runId)
         {
-            return Path.Combine(ResultDirectory, runId + FileExtension);
+            return Path.Combine(ResultDirectory, $"{runId}{FileExtension}");
         }
 
         private static void ValidateLoadedRecord(string expectedRunId, TestRunRecord record)

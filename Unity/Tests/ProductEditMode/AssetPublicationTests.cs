@@ -12,7 +12,7 @@ namespace AgentBridge.Tests.ProductEditMode
         [SetUp]
         public void SetUp()
         {
-            m_Path = "Assets/__AgentBridgePublication_" + Guid.NewGuid().ToString("N") + ".txt";
+            m_Path = $"Assets/__AgentBridgePublication_{Guid.NewGuid():N}.txt";
         }
 
         [TearDown]
@@ -27,7 +27,7 @@ namespace AgentBridge.Tests.ProductEditMode
             var original = AssetSupport.PublishTextAsset(m_Path, "before", false);
             var fullPath = AssetSupport.ToAbsolutePath(m_Path);
             var originalPayload = File.ReadAllBytes(fullPath);
-            var originalMetadata = File.ReadAllBytes(fullPath + ".meta");
+            var originalMetadata = File.ReadAllBytes($"{fullPath}.meta");
 
             var error = Assert.Throws<CommandException>(() =>
                 AssetSupport.PublishBytesAsset(
@@ -38,7 +38,7 @@ namespace AgentBridge.Tests.ProductEditMode
 
             Assert.That(error.Code, Is.EqualTo(AssetErrorCodes.AssetCreateFailed));
             CollectionAssert.AreEqual(originalPayload, File.ReadAllBytes(fullPath));
-            CollectionAssert.AreEqual(originalMetadata, File.ReadAllBytes(fullPath + ".meta"));
+            CollectionAssert.AreEqual(originalMetadata, File.ReadAllBytes($"{fullPath}.meta"));
             Assert.That(AssetDatabase.AssetPathToGUID(m_Path), Is.EqualTo(original.Guid));
         }
 

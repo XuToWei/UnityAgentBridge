@@ -134,7 +134,7 @@ namespace AgentBridge
             {
                 s_GameViewType = null;
                 throw new CommandException(UnavailableError,
-                    "无法访问编辑器 Game View 分辨率 API(内部类型或成员反射失败): " + ex.Message);
+                    $"无法访问编辑器 Game View 分辨率 API(内部类型或成员反射失败): {ex.Message}");
             }
             if (!ready)
             {
@@ -228,13 +228,13 @@ namespace AgentBridge
             {
                 RollbackSelectionAndCustomSize(rollbackGameView, rollbackSelectedIndex,
                     rollbackSizes, rollbackGroup, rollbackCustomIndex);
-                throw new CommandException(FailedError, "设置 Game View 分辨率失败: " + (ex.InnerException?.Message ?? ex.Message));
+                throw new CommandException(FailedError, $"设置 Game View 分辨率失败: {ex.InnerException?.Message ?? ex.Message}");
             }
             catch (Exception ex)
             {
                 RollbackSelectionAndCustomSize(rollbackGameView, rollbackSelectedIndex,
                     rollbackSizes, rollbackGroup, rollbackCustomIndex);
-                throw new CommandException(FailedError, "设置 Game View 分辨率失败: " + ex.Message);
+                throw new CommandException(FailedError, $"设置 Game View 分辨率失败: {ex.Message}");
             }
         }
 
@@ -397,11 +397,11 @@ namespace AgentBridge
             catch (TargetInvocationException ex)
             {
                 throw new CommandException(FailedError,
-                    "恢复 Game View 分辨率失败: " + (ex.InnerException?.Message ?? ex.Message));
+                    $"恢复 Game View 分辨率失败: {ex.InnerException?.Message ?? ex.Message}");
             }
             catch (Exception ex)
             {
-                throw new CommandException(FailedError, "恢复 Game View 分辨率失败: " + ex.Message);
+                throw new CommandException(FailedError, $"恢复 Game View 分辨率失败: {ex.Message}");
             }
         }
 

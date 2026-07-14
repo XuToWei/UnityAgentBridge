@@ -33,11 +33,22 @@ namespace AgentBridge
             }
 
             RootDir = Path.GetFullPath(rootDir);
-            Directory.CreateDirectory(RootDir);
             m_RequestPath = Path.Combine(RootDir, RequestFileName);
             m_ProcessingPath = Path.Combine(RootDir, ProcessingFileName);
             m_ResponsePath = Path.Combine(RootDir, ResponseFileName);
-            EnsureGitIgnore();
+        }
+
+        /// <summary>仅打开已经存在的 Bridge root，绝不创建目录。</summary>
+        internal static bool TryOpenExisting(string rootDir, out FileChannel channel)
+        {
+            if (Directory.Exists(rootDir))
+            {
+                channel = new FileChannel(rootDir);
+                return true;
+            }
+
+            channel = null;
+            return false;
         }
 
         /// <summary>
@@ -62,7 +73,7 @@ namespace AgentBridge
                 if (File.Exists(m_ResponsePath))
                 {
                     // 响应已经发布；domain reload 只留下了待补做的 Claim 清理。
-                    TryDeleteFile(m_ProcessingPath);
+                    AtomicFilePublisher.DeleteBestEffort(m_ProcessingPath);
                     return false;
                 }
 
@@ -256,7 +267,7 @@ namespace AgentBridge
                 temp => File.WriteAllBytes(temp, bytes));
 
             // response.json 已经是提交点，Claim 清理失败由下次轮询补做。
-            TryDeleteFile(m_ProcessingPath);
+            AtomicFilePublisher.DeleteBestEffort(m_ProcessingPath);
         }
 
         private static byte[] BuildResponseBytes(
@@ -338,35 +349,5 @@ namespace AgentBridge
             };
         }
 
-        private void EnsureGitIgnore()
-        {
-            var path = Path.Combine(RootDir, ".gitignore");
-            if (File.Exists(path))
-            {
-                return;
-            }
-
-            try
-            {
-                File.WriteAllText(path, "*" + Environment.NewLine);
-            }
-            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
-            {
-                // .gitignore 写入失败不影响通讯。
-            }
-        }
-
-        private static bool TryDeleteFile(string path)
-        {
-            try
-            {
-                File.Delete(path);
-                return !File.Exists(path);
-            }
-            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
-            {
-                return false;
-            }
-        }
     }
 }

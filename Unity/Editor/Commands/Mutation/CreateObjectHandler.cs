@@ -160,7 +160,7 @@ namespace AgentBridge
             }
             if (token.Type != JTokenType.Boolean)
             {
-                throw new CommandException(ErrorCodes.InvalidParams, name + " 必须是 boolean");
+                throw new CommandException(ErrorCodes.InvalidParams, $"{name} 必须是 boolean");
             }
             return token.Value<bool>();
         }

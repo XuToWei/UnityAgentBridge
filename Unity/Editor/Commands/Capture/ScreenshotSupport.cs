@@ -8,40 +8,30 @@ namespace AgentBridge
 {
     internal static class ScreenshotSupport
     {
-        public const long MaxPixels = 33554432;
+        private const long MaxPixels = 32 * 1024 * 1024;
+        private const string DirectoryName = "screenshots";
+        private const string AlreadyExistsError = "SCREENSHOT_ALREADY_EXISTS";
 
         public static Target Prepare(JObject @params, string prefix)
         {
             var overwrite = SceneCommandSupport.ReadBool(@params, "overwrite", false);
-            var token = @params?["fileName"];
-            var requested = token == null || token.Type == JTokenType.Null ? null : token.Value<string>();
+            var requested = @params?["fileName"]?.Value<string>();
             var fileName = ResolveFileName(requested, prefix);
-            string directory;
-            try
+            if (!Directory.Exists(BridgeSettings.RootDir))
             {
-                directory = Path.GetFullPath(Path.Combine(BridgeSettings.RootDir, "screenshots"));
+                throw new DirectoryNotFoundException("Agent Bridge 未启用");
+            }
+
+            var directory = Path.Combine(BridgeSettings.RootDir, DirectoryName);
+            if (!Directory.Exists(directory))
+            {
                 Directory.CreateDirectory(directory);
             }
-            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException ||
-                                       ex is ArgumentException || ex is NotSupportedException)
-            {
-                throw new CommandException("SCREENSHOT_WRITE_FAILED", ex.Message);
-            }
-            var finalPath = Path.GetFullPath(Path.Combine(directory, fileName));
-            var root = directory.EndsWith(Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal)
-                ? directory
-                : directory + Path.DirectorySeparatorChar;
-            var comparison = Application.platform == RuntimePlatform.WindowsEditor ||
-                             Application.platform == RuntimePlatform.OSXEditor
-                ? StringComparison.OrdinalIgnoreCase
-                : StringComparison.Ordinal;
-            if (!finalPath.StartsWith(root, comparison))
-            {
-                throw new CommandException(ErrorCodes.InvalidParams, "fileName 不能指向截图目录之外");
-            }
+
+            var finalPath = Path.Combine(directory, fileName);
             if (File.Exists(finalPath) && !overwrite)
             {
-                throw new CommandException("SCREENSHOT_ALREADY_EXISTS",
+                throw new CommandException(AlreadyExistsError,
                     $"截图文件已存在:'{finalPath}';如需覆盖请传 overwrite=true");
             }
             return new Target(fileName, finalPath, overwrite);
@@ -56,19 +46,15 @@ namespace AgentBridge
             }
             catch (AtomicFileDestinationExistsException)
             {
-                throw new CommandException("SCREENSHOT_ALREADY_EXISTS",
+                throw new CommandException(AlreadyExistsError,
                     $"截图文件已存在:'{target.Path}'");
-            }
-            catch (CommandException)
-            {
-                throw;
             }
             catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException ||
                                        ex is ArgumentException || ex is NotSupportedException)
             {
                 throw new CommandException("SCREENSHOT_WRITE_FAILED", ex.Message);
             }
-            return new FileInfo(target.Path).Length;
+            return bytes.LongLength;
         }
 
         public static void ValidateSize(
@@ -91,7 +77,7 @@ namespace AgentBridge
             if (requested == null)
             {
                 var stamp = DateTime.UtcNow.ToString("yyyyMMdd'T'HHmmssfff'Z'", CultureInfo.InvariantCulture);
-                return prefix + "_" + stamp + "_" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".png";
+                return $"{prefix}_{stamp}_{Guid.NewGuid().ToString("N").Substring(0, 8)}.png";
             }
             var name = requested.Trim();
             if (string.IsNullOrEmpty(name) || Path.IsPathRooted(name) || name.Contains("/") ||
@@ -101,11 +87,12 @@ namespace AgentBridge
                 throw new CommandException(ErrorCodes.InvalidParams,
                     "fileName 只能是 PNG 文件名,不能包含目录、盘符、'..' 或非法字符");
             }
-            if (string.IsNullOrEmpty(Path.GetExtension(name)))
+            var extension = Path.GetExtension(name);
+            if (string.IsNullOrEmpty(extension))
             {
-                name += ".png";
+                name = $"{name}.png";
             }
-            else if (!string.Equals(Path.GetExtension(name), ".png", StringComparison.OrdinalIgnoreCase))
+            else if (!string.Equals(extension, ".png", StringComparison.OrdinalIgnoreCase))
             {
                 throw new CommandException(ErrorCodes.InvalidParams, "fileName 扩展名只能是 .png");
             }
@@ -129,7 +116,7 @@ namespace AgentBridge
             public string FileName { get; }
             public string Path { get; }
             public bool Overwrite { get; }
-            public string RelativePath => "screenshots/" + FileName;
+            public string RelativePath => $"{DirectoryName}/{FileName}";
         }
     }
 }

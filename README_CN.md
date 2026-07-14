@@ -75,7 +75,7 @@ agent <── .agentbridge/response.json <──rename── response.json.tmp
   https://github.com/XuToWei/UnityAgentBridge.git?path=Unity
   ```
 
-主机随加载自启。桥接根目录默认 `<工程>/.agentbridge/`；临时协议槽位为 `request.json`、`processing.json`、`response.json`。
+首次安装后，打开 `Window ▸ Agent Bridge` 并点击**启用桥接**；此时才会创建桥接根目录 `<工程>/.agentbridge/` 并启动主机。Domain Reload 仅在该目录已经存在时自动恢复主机；目录不存在时，**启用桥接**按钮保持关闭。临时协议槽位为 `request.json`、`processing.json`、`response.json`。
 
 ## 自动验收
 

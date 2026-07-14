@@ -51,7 +51,7 @@ namespace AgentBridge
             }
 
             var prefixLength = Math.Max(0, maxLength - TruncatedSuffix.Length);
-            return value.Substring(0, prefixLength) + TruncatedSuffix;
+            return $"{value.Substring(0, prefixLength)}{TruncatedSuffix}";
         }
     }
 

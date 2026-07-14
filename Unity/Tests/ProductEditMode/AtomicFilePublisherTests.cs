@@ -14,7 +14,7 @@ namespace AgentBridge.Tests.ProductEditMode
         public void SetUp()
         {
             m_Directory = Path.Combine(Path.GetTempPath(),
-                "AgentBridgeAtomicPublisher-" + Guid.NewGuid().ToString("N"));
+                $"AgentBridgeAtomicPublisher-{Guid.NewGuid():N}");
             Directory.CreateDirectory(m_Directory);
             m_Destination = Path.Combine(m_Directory, "published.txt");
         }
@@ -49,28 +49,28 @@ namespace AgentBridge.Tests.ProductEditMode
                 File.WriteAllText(temp, "complete", new UTF8Encoding(false));
             });
 
-            Assert.That(stagedPath, Is.EqualTo(m_Destination + ".tmp"));
+            Assert.That(stagedPath, Is.EqualTo($"{m_Destination}.tmp"));
             Assert.That(File.ReadAllText(m_Destination), Is.EqualTo("complete"));
-            Assert.That(File.Exists(m_Destination + ".tmp"), Is.False);
+            Assert.That(File.Exists($"{m_Destination}.tmp"), Is.False);
         }
 
         [Test]
         public void PublishRecoverableNew_DiscardsStaleTempAndStagesFreshContent()
         {
-            File.WriteAllText(m_Destination + ".tmp", "stale");
+            File.WriteAllText($"{m_Destination}.tmp", "stale");
             var stageCount = 0;
 
             AtomicFilePublisher.PublishRecoverableNew(m_Destination, temp =>
             {
                 stageCount++;
-                Assert.That(temp, Is.EqualTo(m_Destination + ".tmp"));
+                Assert.That(temp, Is.EqualTo($"{m_Destination}.tmp"));
                 Assert.That(File.Exists(temp), Is.False);
                 File.WriteAllText(temp, "fresh");
             });
 
             Assert.That(stageCount, Is.EqualTo(1));
             Assert.That(File.ReadAllText(m_Destination), Is.EqualTo("fresh"));
-            Assert.That(File.Exists(m_Destination + ".tmp"), Is.False);
+            Assert.That(File.Exists($"{m_Destination}.tmp"), Is.False);
         }
 
         [Test]
@@ -84,7 +84,7 @@ namespace AgentBridge.Tests.ProductEditMode
                 }));
 
             Assert.That(File.Exists(m_Destination), Is.False);
-            Assert.That(File.Exists(m_Destination + ".tmp"), Is.False);
+            Assert.That(File.Exists($"{m_Destination}.tmp"), Is.False);
         }
 
         [Test]
@@ -98,7 +98,7 @@ namespace AgentBridge.Tests.ProductEditMode
 
             Assert.That(error.Destination, Is.EqualTo(m_Destination));
             Assert.That(File.ReadAllText(m_Destination), Is.EqualTo("before"));
-            Assert.That(File.Exists(m_Destination + ".tmp"), Is.False);
+            Assert.That(File.Exists($"{m_Destination}.tmp"), Is.False);
         }
 
         [Test]

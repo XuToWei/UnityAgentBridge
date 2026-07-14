@@ -498,7 +498,7 @@ Invoke-TestCase "protocol.id_empty" {
 
 Invoke-TestCase "protocol.id_too_long" {
     $id = "x" * 65
-    $json = '{"v":1,"id":"' + $id + '","command":"ping","params":{}}'
+    $json = "{`"v`":1,`"id`":`"$id`",`"command`":`"ping`",`"params`":{}}"
     $exchange = Invoke-RawBridgeRequest "" $json
     Assert-Error $exchange "INVALID_REQUEST"
     return $exchange
@@ -506,7 +506,7 @@ Invoke-TestCase "protocol.id_too_long" {
 
 Invoke-TestCase "protocol.v_wrong_type" {
     $id = New-RequestId "bad-v-type"
-    $json = '{"v":"1","id":"' + $id + '","command":"ping","params":{}}'
+    $json = "{`"v`":`"1`",`"id`":`"$id`",`"command`":`"ping`",`"params`":{}}"
     $exchange = Invoke-RawBridgeRequest $id $json
     Assert-Error $exchange "INVALID_REQUEST"
     return $exchange
@@ -514,7 +514,7 @@ Invoke-TestCase "protocol.v_wrong_type" {
 
 Invoke-TestCase "protocol.v_integer_overflow" {
     $id = New-RequestId "bad-v-overflow"
-    $json = '{"v":999999999999999999999999999999999999999999999999999999,"id":"' + $id + '","command":"ping","params":{}}'
+    $json = "{`"v`":999999999999999999999999999999999999999999999999999999,`"id`":`"$id`",`"command`":`"ping`",`"params`":{}}"
     $exchange = Invoke-RawBridgeRequest $id $json
     Assert-Error $exchange "INVALID_REQUEST"
     return $exchange
@@ -529,7 +529,7 @@ Invoke-TestCase "protocol.id_wrong_type" {
 
 Invoke-TestCase "protocol.command_wrong_type" {
     $id = New-RequestId "bad-command-type"
-    $json = '{"v":1,"id":"' + $id + '","command":456,"params":{}}'
+    $json = "{`"v`":1,`"id`":`"$id`",`"command`":456,`"params`":{}}"
     $exchange = Invoke-RawBridgeRequest $id $json
     Assert-Error $exchange "INVALID_REQUEST"
     return $exchange
@@ -537,7 +537,7 @@ Invoke-TestCase "protocol.command_wrong_type" {
 
 Invoke-TestCase "protocol.duplicate_field" {
     $id = New-RequestId "duplicate-field"
-    $json = '{"v":1,"v":2,"id":"' + $id + '","command":"ping","params":{}}'
+    $json = "{`"v`":1,`"v`":2,`"id`":`"$id`",`"command`":`"ping`",`"params`":{}}"
     $exchange = Invoke-RawBridgeRequest "" $json
     Assert-Error $exchange "INVALID_REQUEST"
     return $exchange
@@ -546,7 +546,7 @@ Invoke-TestCase "protocol.duplicate_field" {
 Invoke-TestCase "protocol.request_too_large" {
     $id = New-RequestId "too-large"
     $padding = "x" * (1024 * 1024)
-    $json = '{"v":1,"id":"' + $id + '","command":"ping","params":{},"padding":"' + $padding + '"}'
+    $json = "{`"v`":1,`"id`":`"$id`",`"command`":`"ping`",`"params`":{},`"padding`":`"$padding`"}"
     $exchange = Invoke-RawBridgeRequest "" $json
     Assert-Error $exchange "INVALID_REQUEST"
     return $exchange
@@ -554,7 +554,7 @@ Invoke-TestCase "protocol.request_too_large" {
 
 Invoke-TestCase "protocol.params_wrong_shape" {
     $id = New-RequestId "bad-params"
-    $json = '{"v":1,"id":"' + $id + '","command":"ping","params":[]}'
+    $json = "{`"v`":1,`"id`":`"$id`",`"command`":`"ping`",`"params`":[]}"
     $exchange = Invoke-RawBridgeRequest $id $json
     Assert-Error $exchange "INVALID_REQUEST"
     return $exchange
@@ -701,7 +701,7 @@ Invoke-TestCase "testing.run_tests.invalid_mode" {
 }
 
 Invoke-TestCase "testing.get_test_result.missing" {
-    $missingRunId = "test-run-missing-" + [Guid]::NewGuid().ToString("N").Substring(0, 12)
+    $missingRunId = "test-run-missing-$([Guid]::NewGuid().ToString("N").Substring(0, 12))"
     $exchange = Invoke-BridgeRequest "get_test_result" @{ runId = $missingRunId } "tests-missing-result"
     Assert-Error $exchange "TEST_RESULT_NOT_FOUND"
     return $exchange
@@ -1587,7 +1587,7 @@ if ($Suite -ne "Baseline") {
         } "scene-source"
         Assert-Ok $exchange
         $candidate = @($exchange.Response.result.assets | Where-Object {
-            -not ([string]$_.path).StartsWith($script:AssetRoot + "/", [StringComparison]::Ordinal)
+            -not ([string]$_.path).StartsWith("$($script:AssetRoot)/", [StringComparison]::Ordinal)
         }) | Select-Object -First 1
         if ($null -eq $candidate) { throw "project has no saved SceneAsset to copy as an isolated fixture" }
         $script:SceneSourcePath = [string]$candidate.path
@@ -2148,7 +2148,7 @@ if ($Suite -ne "Baseline") {
         Assert-Ok $verified
         Assert-Equal @($verified.Response.result.scenes | Where-Object {
             -not [string]::IsNullOrEmpty([string]$_.path) -and
-            ([string]$_.path).StartsWith($script:AssetRoot + "/", [StringComparison]::Ordinal)
+            ([string]$_.path).StartsWith("$($script:AssetRoot)/", [StringComparison]::Ordinal)
         }).Count 0 "fixture scene remained loaded after cleanup"
         return $verified
     }
@@ -2564,7 +2564,7 @@ if ($Suite -ne "Baseline") {
         Assert-Ok $scenes
         Assert-Equal @($scenes.Response.result.scenes | Where-Object {
             -not [string]::IsNullOrEmpty([string]$_.path) -and
-            ([string]$_.path).StartsWith($script:AssetRoot + "/", [StringComparison]::Ordinal)
+            ([string]$_.path).StartsWith("$($script:AssetRoot)/", [StringComparison]::Ordinal)
         }).Count 0 "refusing to delete AssetRoot while one of its scenes is still loaded"
         $exchange = Invoke-BridgeRequest "delete_asset" @{
             path = $script:AssetRoot

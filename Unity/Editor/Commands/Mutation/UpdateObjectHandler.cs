@@ -336,9 +336,7 @@ namespace AgentBridge
             catch (Exception rollbackError)
             {
                 throw new CommandException("OBJECT_UPDATE_FAILED",
-                    "PlayMode 更新失败且回滚失败:" +
-                    (operationError?.Message ?? "命令参数或 Unity 操作失败") +
-                    "; rollback:" + rollbackError.Message);
+                    $"PlayMode 更新失败且回滚失败:{operationError?.Message ?? "命令参数或 Unity 操作失败"}; rollback:{rollbackError.Message}");
             }
         }
 

@@ -85,7 +85,7 @@ namespace AgentBridge
             }
             catch (Exception ex)
             {
-                throw new CommandException(CaptureFailedError, "Game 视图截图失败: " + ex.Message);
+                throw new CommandException(CaptureFailedError, $"Game 视图截图失败: {ex.Message}");
             }
             finally
             {

@@ -64,7 +64,7 @@ namespace AgentBridge
             }
             catch (Exception ex)
             {
-                error = "invalid params schema: " + ex.Message;
+                error = $"invalid params schema: {ex.Message}";
                 return false;
             }
         }
@@ -95,7 +95,7 @@ namespace AgentBridge
                 }
                 if (!matched)
                 {
-                    error = path + " does not match any allowed schema";
+                    error = $"{path} does not match any allowed schema";
                     return false;
                 }
             }
@@ -112,7 +112,7 @@ namespace AgentBridge
                 }
                 if (matches != 1)
                 {
-                    error = path + " must match exactly one allowed schema";
+                    error = $"{path} must match exactly one allowed schema";
                     return false;
                 }
             }
@@ -120,13 +120,13 @@ namespace AgentBridge
             if (schema.TryGetValue("not", out var notToken) && notToken is JObject notSchema &&
                 TryValidateToken(value, notSchema, path, out _))
             {
-                error = path + " matches a forbidden schema";
+                error = $"{path} matches a forbidden schema";
                 return false;
             }
 
             if (schema.TryGetValue("const", out var constToken) && !JToken.DeepEquals(value, constToken))
             {
-                error = path + " must equal " + constToken.ToString(Newtonsoft.Json.Formatting.None);
+                error = $"{path} must equal {constToken.ToString(Newtonsoft.Json.Formatting.None)}";
                 return false;
             }
 
@@ -135,7 +135,7 @@ namespace AgentBridge
                 var expectedType = typeToken.Value<string>();
                 if (!MatchesType(value, expectedType))
                 {
-                    error = path + " must be " + expectedType + ", got " + TypeName(value);
+                    error = $"{path} must be {expectedType}, got {TypeName(value)}";
                     return false;
                 }
             }
@@ -143,7 +143,7 @@ namespace AgentBridge
             if (schema.TryGetValue("enum", out var enumToken) && enumToken is JArray allowed &&
                 !allowed.Any(candidate => JToken.DeepEquals(candidate, value)))
             {
-                error = path + " must be one of " + allowed.ToString(Newtonsoft.Json.Formatting.None);
+                error = $"{path} must be one of {allowed.ToString(Newtonsoft.Json.Formatting.None)}";
                 return false;
             }
 
@@ -178,7 +178,7 @@ namespace AgentBridge
                     var name = nameToken.Value<string>();
                     if (!string.IsNullOrEmpty(name) && value.Property(name, StringComparison.Ordinal) == null)
                     {
-                        error = path + "." + name + " is required";
+                        error = $"{path}.{name} is required";
                         return false;
                     }
                 }
@@ -189,7 +189,7 @@ namespace AgentBridge
             {
                 if (properties?.Property(property.Name, StringComparison.Ordinal)?.Value is JObject propertySchema)
                 {
-                    if (!TryValidateToken(property.Value, propertySchema, path + "." + property.Name, out error))
+                    if (!TryValidateToken(property.Value, propertySchema, $"{path}.{property.Name}", out error))
                     {
                         return false;
                     }
@@ -197,13 +197,13 @@ namespace AgentBridge
                 else if (schema["additionalProperties"]?.Type == JTokenType.Boolean &&
                          !schema["additionalProperties"].Value<bool>())
                 {
-                    error = path + "." + property.Name + " is not allowed";
+                    error = $"{path}.{property.Name} is not allowed";
                     return false;
                 }
                 else if (schema["additionalProperties"] is JObject additionalSchema)
                 {
                     if (!TryValidateToken(property.Value, additionalSchema,
-                            path + "." + property.Name, out error))
+                            $"{path}.{property.Name}", out error))
                     {
                         return false;
                     }
@@ -220,7 +220,7 @@ namespace AgentBridge
             {
                 if (!SupportedKeywords.Contains(property.Name))
                 {
-                    error = path + "." + property.Name + " is unsupported";
+                    error = $"{path}.{property.Name} is unsupported";
                     return false;
                 }
             }
@@ -229,7 +229,7 @@ namespace AgentBridge
             {
                 if (typeToken.Type != JTokenType.String || !SupportedTypes.Contains(typeToken.Value<string>()))
                 {
-                    error = path + ".type is unsupported";
+                    error = $"{path}.type is unsupported";
                     return false;
                 }
             }
@@ -238,17 +238,17 @@ namespace AgentBridge
             {
                 if (!(propertiesToken is JObject properties))
                 {
-                    error = path + ".properties must be an object";
+                    error = $"{path}.properties must be an object";
                     return false;
                 }
                 foreach (var property in properties.Properties())
                 {
                     if (!(property.Value is JObject child))
                     {
-                        error = path + ".properties." + property.Name + " must be an object";
+                        error = $"{path}.properties.{property.Name} must be an object";
                         return false;
                     }
-                    if (!ValidateSchemaNode(child, path + ".properties." + property.Name, out error))
+                    if (!ValidateSchemaNode(child, $"{path}.properties.{property.Name}", out error))
                     {
                         return false;
                     }
@@ -258,12 +258,12 @@ namespace AgentBridge
             if (schema.TryGetValue("required", out var requiredToken) &&
                 (!(requiredToken is JArray required) || required.Any(item => item.Type != JTokenType.String)))
             {
-                error = path + ".required must be an array of strings";
+                error = $"{path}.required must be an array of strings";
                 return false;
             }
             if (schema.TryGetValue("enum", out var enumToken) && !(enumToken is JArray))
             {
-                error = path + ".enum must be an array";
+                error = $"{path}.enum must be an array";
                 return false;
             }
 
@@ -276,12 +276,12 @@ namespace AgentBridge
                 if (!(branchesToken is JArray branches) || branches.Count == 0 ||
                     branches.Any(branch => !(branch is JObject)))
                 {
-                    error = path + "." + keyword + " must be a non-empty array of schemas";
+                    error = $"{path}.{keyword} must be a non-empty array of schemas";
                     return false;
                 }
                 for (var i = 0; i < branches.Count; i++)
                 {
-                    if (!ValidateSchemaNode((JObject)branches[i], path + "." + keyword + "[" + i + "]", out error))
+                    if (!ValidateSchemaNode((JObject)branches[i], $"{path}.{keyword}[{i}]", out error))
                     {
                         return false;
                     }
@@ -296,10 +296,10 @@ namespace AgentBridge
                 }
                 if (!(childToken is JObject child))
                 {
-                    error = path + "." + keyword + " must be a schema object";
+                    error = $"{path}.{keyword} must be a schema object";
                     return false;
                 }
-                if (!ValidateSchemaNode(child, path + "." + keyword, out error))
+                if (!ValidateSchemaNode(child, $"{path}.{keyword}", out error))
                 {
                     return false;
                 }
@@ -310,10 +310,10 @@ namespace AgentBridge
             {
                 if (!(additional is JObject additionalSchema))
                 {
-                    error = path + ".additionalProperties must be boolean or schema";
+                    error = $"{path}.additionalProperties must be boolean or schema";
                     return false;
                 }
-                if (!ValidateSchemaNode(additionalSchema, path + ".additionalProperties", out error))
+                if (!ValidateSchemaNode(additionalSchema, $"{path}.additionalProperties", out error))
                 {
                     return false;
                 }
@@ -328,7 +328,7 @@ namespace AgentBridge
                 if (limit.Type != JTokenType.Integer ||
                     !TryReadNonNegativeInt32(limit, out _))
                 {
-                    error = path + "." + keyword + " must be an integer in 0..2147483647";
+                    error = $"{path}.{keyword} must be an integer in 0..2147483647";
                     return false;
                 }
             }
@@ -346,7 +346,7 @@ namespace AgentBridge
                 if ((number.Type != JTokenType.Integer && number.Type != JTokenType.Float) ||
                     !IsFiniteNumber(number))
                 {
-                    error = path + "." + keyword + " must be a finite number";
+                    error = $"{path}.{keyword} must be a finite number";
                     return false;
                 }
             }
@@ -355,7 +355,7 @@ namespace AgentBridge
             {
                 if (schema["pattern"].Type != JTokenType.String)
                 {
-                    error = path + ".pattern must be a string";
+                    error = $"{path}.pattern must be a string";
                     return false;
                 }
                 _ = new Regex(schema["pattern"].Value<string>(), RegexOptions.CultureInvariant, PatternTimeout);
@@ -369,12 +369,12 @@ namespace AgentBridge
         {
             if (schema["minItems"]?.Type == JTokenType.Integer && value.Count < schema["minItems"].Value<int>())
             {
-                error = path + " has too few items";
+                error = $"{path} has too few items";
                 return false;
             }
             if (schema["maxItems"]?.Type == JTokenType.Integer && value.Count > schema["maxItems"].Value<int>())
             {
-                error = path + " has too many items";
+                error = $"{path} has too many items";
                 return false;
             }
 
@@ -382,7 +382,7 @@ namespace AgentBridge
             {
                 for (var i = 0; i < value.Count; i++)
                 {
-                    if (!TryValidateToken(value[i], itemSchema, path + "[" + i + "]", out error))
+                    if (!TryValidateToken(value[i], itemSchema, $"{path}[{i}]", out error))
                     {
                         return false;
                     }
@@ -397,12 +397,12 @@ namespace AgentBridge
         {
             if (schema["minLength"]?.Type == JTokenType.Integer && value.Length < schema["minLength"].Value<int>())
             {
-                error = path + " is shorter than minLength";
+                error = $"{path} is shorter than minLength";
                 return false;
             }
             if (schema["maxLength"]?.Type == JTokenType.Integer && value.Length > schema["maxLength"].Value<int>())
             {
-                error = path + " is longer than maxLength";
+                error = $"{path} is longer than maxLength";
                 return false;
             }
 
@@ -412,13 +412,13 @@ namespace AgentBridge
                 {
                     if (!Regex.IsMatch(value, schema["pattern"].Value<string>(), RegexOptions.CultureInvariant, PatternTimeout))
                     {
-                        error = path + " does not match its required pattern";
+                        error = $"{path} does not match its required pattern";
                         return false;
                     }
                 }
                 catch (ArgumentException ex)
                 {
-                    throw new InvalidOperationException("invalid schema pattern at " + path, ex);
+                    throw new InvalidOperationException($"invalid schema pattern at {path}", ex);
                 }
             }
 
@@ -430,29 +430,29 @@ namespace AgentBridge
         {
             if (!IsFiniteNumber(value))
             {
-                error = path + " must be finite";
+                error = $"{path} must be finite";
                 return false;
             }
             if (schema["minimum"] != null && CompareNumbers(value, schema["minimum"]) < 0)
             {
-                error = path + " must be >= " + FormatNumber(schema["minimum"]);
+                error = $"{path} must be >= {FormatNumber(schema["minimum"])}";
                 return false;
             }
             if (schema["maximum"] != null && CompareNumbers(value, schema["maximum"]) > 0)
             {
-                error = path + " must be <= " + FormatNumber(schema["maximum"]);
+                error = $"{path} must be <= {FormatNumber(schema["maximum"])}";
                 return false;
             }
             if (schema["exclusiveMinimum"] != null &&
                 CompareNumbers(value, schema["exclusiveMinimum"]) <= 0)
             {
-                error = path + " must be > " + FormatNumber(schema["exclusiveMinimum"]);
+                error = $"{path} must be > {FormatNumber(schema["exclusiveMinimum"])}";
                 return false;
             }
             if (schema["exclusiveMaximum"] != null &&
                 CompareNumbers(value, schema["exclusiveMaximum"]) >= 0)
             {
-                error = path + " must be < " + FormatNumber(schema["exclusiveMaximum"]);
+                error = $"{path} must be < {FormatNumber(schema["exclusiveMaximum"])}";
                 return false;
             }
 
@@ -523,7 +523,7 @@ namespace AgentBridge
                 case "number": return value.Type == JTokenType.Integer || value.Type == JTokenType.Float;
                 case "boolean": return value.Type == JTokenType.Boolean;
                 case "null": return value.Type == JTokenType.Null;
-                default: throw new InvalidOperationException("unsupported schema type '" + expected + "'");
+                default: throw new InvalidOperationException($"unsupported schema type '{expected}'");
             }
         }
 

@@ -34,7 +34,7 @@ namespace AgentBridge
             {
                 CompileMonitor.MarkRequestFailed(state.Generation, ex.Message);
                 throw new CommandException("RECOMPILE_REQUEST_FAILED",
-                    "请求脚本重编译失败:" + ex.Message);
+                    $"请求脚本重编译失败:{ex.Message}");
             }
             return new
             {

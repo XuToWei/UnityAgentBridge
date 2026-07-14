@@ -36,7 +36,7 @@ namespace AgentBridge.Tests.ProductEditMode
                 record =>
                 {
                     attempts++;
-                    events.Add("save:" + attempts);
+                    events.Add($"save:{attempts}");
                     if (attempts == 1)
                     {
                         throw new IOException("transient");

@@ -27,7 +27,7 @@ namespace AgentBridge
                 return new { action, status = Describe(statusObject) };
             }
 
-            SceneCommandSupport.RequireEditMode(Command + "." + action);
+            SceneCommandSupport.RequireEditMode($"{Command}.{action}");
             switch (action)
             {
                 case "create": return Create(@params);

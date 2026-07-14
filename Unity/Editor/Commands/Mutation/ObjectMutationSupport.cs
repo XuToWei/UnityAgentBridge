@@ -48,7 +48,7 @@ namespace AgentBridge
 
         public static UndoTransaction BeginUndo(string command, bool persistent)
         {
-            return new UndoTransaction("AgentBridge " + command, persistent);
+            return new UndoTransaction($"AgentBridge {command}", persistent);
         }
 
         public static Vector3? ReadVector3(JToken token, string name)
@@ -60,12 +60,12 @@ namespace AgentBridge
             if (token.Type != JTokenType.Object)
             {
                 throw new CommandException(ErrorCodes.InvalidParams,
-                    name + " 必须是包含 x/y/z 的对象");
+                    $"{name} 必须是包含 x/y/z 的对象");
             }
             return new Vector3(
-                ReadFloat(token["x"], name + ".x"),
-                ReadFloat(token["y"], name + ".y"),
-                ReadFloat(token["z"], name + ".z"));
+                ReadFloat(token["x"], $"{name}.x"),
+                ReadFloat(token["y"], $"{name}.y"),
+                ReadFloat(token["z"], $"{name}.z"));
         }
 
         private static float ReadFloat(JToken token, string name)
@@ -73,7 +73,7 @@ namespace AgentBridge
             if (token == null ||
                 (token.Type != JTokenType.Integer && token.Type != JTokenType.Float))
             {
-                throw new CommandException(ErrorCodes.InvalidParams, name + " 必须是数字");
+                throw new CommandException(ErrorCodes.InvalidParams, $"{name} 必须是数字");
             }
             try
             {
@@ -88,7 +88,7 @@ namespace AgentBridge
             catch (Exception)
             {
                 throw new CommandException(ErrorCodes.InvalidParams,
-                    name + " 必须是 Single 范围内的有限数字");
+                    $"{name} 必须是 Single 范围内的有限数字");
             }
         }
 

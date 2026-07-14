@@ -155,7 +155,7 @@ namespace AgentBridge
                     ? tie.InnerException
                     : ex;
                 throw new CommandException("CONSOLE_UNAVAILABLE",
-                    "清空编辑器 Console 失败:" + cause.Message);
+                    $"清空编辑器 Console 失败:{cause.Message}");
             }
             return total;
         }

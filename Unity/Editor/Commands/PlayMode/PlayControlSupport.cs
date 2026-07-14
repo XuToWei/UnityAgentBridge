@@ -14,7 +14,7 @@ namespace AgentBridge
             if (!EditorApplication.isPlaying)
             {
                 throw new CommandException("PLAY_MODE_NOT_ACTIVE",
-                    command + " 需要 Unity 已进入 PlayMode");
+                    $"{command} 需要 Unity 已进入 PlayMode");
             }
         }
     }

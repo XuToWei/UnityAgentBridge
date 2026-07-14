@@ -121,14 +121,14 @@ namespace AgentBridge
 
         private static string Summarize(Exception ex)
         {
-            var msg = ex.GetType().Name + ": " + ex.Message;
+            var msg = $"{ex.GetType().Name}: {ex.Message}";
             var trace = ex.StackTrace;
             if (!string.IsNullOrEmpty(trace))
             {
                 var firstLine = trace.Split('\n')[0].Trim();
                 if (firstLine.Length > 0)
                 {
-                    msg += " | " + firstLine;
+                    msg = $"{msg} | {firstLine}";
                 }
             }
             return msg;

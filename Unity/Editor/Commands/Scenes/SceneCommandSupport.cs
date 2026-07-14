@@ -65,7 +65,7 @@ namespace AgentBridge
             if (EditorApplication.isPlaying || EditorApplication.isPlayingOrWillChangePlaymode)
             {
                 throw new CommandException(SceneCommandErrorCodes.EditModeRequired,
-                    command + " 只能在稳定的 EditMode 执行");
+                    $"{command} 只能在稳定的 EditMode 执行");
             }
         }
 
@@ -160,7 +160,7 @@ namespace AgentBridge
             if (!normalized.EndsWith(".unity", StringComparison.OrdinalIgnoreCase))
             {
                 throw new CommandException(PlayModeErrorCodes.InvalidScenePath,
-                    field + " 必须是 Assets/ 下的 .unity 文件");
+                    $"{field} 必须是 Assets/ 下的 .unity 文件");
             }
             if (mustExist && AssetDatabase.LoadAssetAtPath<SceneAsset>(normalized) == null)
             {
@@ -368,15 +368,15 @@ namespace AgentBridge
             switch (operation)
             {
                 case SceneUnsavedOperation.OpenSingleKeepingTarget:
-                    return "其它已加载场景有未保存修改:" + labels;
+                    return $"其它已加载场景有未保存修改:{labels}";
                 case SceneUnsavedOperation.CloseScene:
                     return $"场景有未保存修改:'{labels}'";
                 case SceneUnsavedOperation.PlaySceneSwitch:
-                    return "当前打开场景有未保存修改,默认不会切换场景:" + labels;
+                    return $"当前打开场景有未保存修改,默认不会切换场景:{labels}";
                 case SceneUnsavedOperation.RunTests:
-                    return "当前场景有未保存修改,run_tests 默认拒绝启动:" + labels;
+                    return $"当前场景有未保存修改,run_tests 默认拒绝启动:{labels}";
                 default:
-                    return "当前场景有未保存修改:" + labels;
+                    return $"当前场景有未保存修改:{labels}";
             }
         }
 
@@ -391,8 +391,7 @@ namespace AgentBridge
                 case SceneUnsavedOperation.RunTests:
                     return $"未命名场景 '{scene.name}' 无法非交互保存;请先使用 save_scene.saveAs";
                 case SceneUnsavedOperation.SaveCommand:
-                    return $"未命名场景 '{scene.name}' 无法通过 all=true 非交互保存;" +
-                           $"请单独调用 save_scene 并传 sceneHandle={GetHandle(scene)} 与 saveAs=Assets/.../*.unity";
+                    return $"未命名场景 '{scene.name}' 无法通过 all=true 非交互保存;请单独调用 save_scene 并传 sceneHandle={GetHandle(scene)} 与 saveAs=Assets/.../*.unity";
                 default:
                     return $"未命名场景 '{scene.name}' 无法非交互保存;请先使用 save_scene.saveAs 或选择 discard";
             }
@@ -474,7 +473,7 @@ namespace AgentBridge
             catch (Exception)
             {
                 throw new CommandException(ErrorCodes.InvalidParams,
-                    name + " 必须是 32 位 integer");
+                    $"{name} 必须是 32 位 integer");
             }
         }
 

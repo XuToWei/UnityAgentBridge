@@ -42,7 +42,7 @@ namespace AgentBridge
             }
             catch (System.Exception ex)
             {
-                throw new CommandException("ASSET_REFRESH_FAILED", "AssetDatabase.Refresh 失败:" + ex.Message);
+                throw new CommandException("ASSET_REFRESH_FAILED", $"AssetDatabase.Refresh 失败:{ex.Message}");
             }
             return new { saved = true, refreshed = true };
         }

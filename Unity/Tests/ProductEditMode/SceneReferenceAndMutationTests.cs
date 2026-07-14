@@ -238,8 +238,7 @@ namespace AgentBridge.Tests.ProductEditMode
         [Test]
         public void RunTests_SavePolicySavesNamedScene()
         {
-            m_ScenePath = "Assets/__AgentBridgeSceneWorkflow_" +
-                          System.Guid.NewGuid().ToString("N") + ".unity";
+            m_ScenePath = $"Assets/__AgentBridgeSceneWorkflow_{System.Guid.NewGuid():N}.unity";
             Assert.That(EditorSceneManager.SaveScene(m_Scene, m_ScenePath), Is.True);
             EditorSceneManager.MarkSceneDirty(m_Scene);
 

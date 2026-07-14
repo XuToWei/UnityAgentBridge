@@ -15,7 +15,7 @@ namespace AgentBridge
     public static class CommandToggle
     {
         // EditorPrefs 是按 Unity 安装共享的 → key 带 dataPath 区分工程。
-        private static string PrefKey => "AgentBridge.DisabledCommands." + Application.dataPath;
+        private static string PrefKey => $"AgentBridge.DisabledCommands.{Application.dataPath}";
 
         static CommandToggle()
         {

@@ -88,7 +88,7 @@ namespace AgentBridge
             catch (Exception ex)
             {
                 throw new CommandException(SceneCommandErrorCodes.SceneOpenFailed,
-                    "打开场景失败:" + ex.Message);
+                    $"打开场景失败:{ex.Message}");
             }
             if (!opened.IsValid() || !opened.isLoaded)
             {

@@ -39,6 +39,40 @@ namespace AgentBridge.Tests.ProductEditMode
         }
 
         [Test]
+        public void TryOpenExistingDoesNotCreateMissingRoot()
+        {
+            var missingRoot = Path.Combine(m_Root, "missing");
+
+            var opened = FileChannel.TryOpenExisting(missingRoot, out var channel);
+
+            Assert.That(opened, Is.False);
+            Assert.That(channel, Is.Null);
+            Assert.That(Directory.Exists(missingRoot), Is.False);
+        }
+
+        [Test]
+        public void TryOpenExistingReturnsExistingChannel()
+        {
+            var opened = FileChannel.TryOpenExisting(m_Root, out var channel);
+
+            Assert.That(opened, Is.True);
+            Assert.That(channel, Is.Not.Null);
+            Assert.That(channel.RootDir, Is.EqualTo(Path.GetFullPath(m_Root)));
+            Assert.That(File.Exists(Path.Combine(m_Root, ".gitignore")), Is.False);
+        }
+
+        [Test]
+        public void ConstructorDoesNotCreateMissingRoot()
+        {
+            var missingRoot = Path.Combine(m_Root, "missing");
+
+            var channel = new FileChannel(missingRoot);
+
+            Assert.That(channel, Is.Not.Null);
+            Assert.That(Directory.Exists(missingRoot), Is.False);
+        }
+
+        [Test]
         public void TryProcessOneDispatchesRequestAndPublishesResponse()
         {
             var channel = new FileChannel(m_Root);
@@ -57,7 +91,7 @@ namespace AgentBridge.Tests.ProductEditMode
             Assert.That(dispatchCount, Is.EqualTo(1));
             Assert.That(File.Exists(RequestPath), Is.False);
             Assert.That(File.Exists(ProcessingPath), Is.False);
-            Assert.That(File.Exists(ResponsePath + ".tmp"), Is.False);
+            Assert.That(File.Exists($"{ResponsePath}.tmp"), Is.False);
 
             var response = ReadResponse();
             Assert.That(response["id"]?.Value<string>(), Is.EqualTo("only"));
@@ -71,8 +105,8 @@ namespace AgentBridge.Tests.ProductEditMode
         public void TryProcessOneIgnoresTemporaryFiles()
         {
             var channel = new FileChannel(m_Root);
-            var requestTemp = RequestPath + ".tmp";
-            var responseTemp = ResponsePath + ".tmp";
+            var requestTemp = $"{RequestPath}.tmp";
+            var responseTemp = $"{ResponsePath}.tmp";
             File.WriteAllText(requestTemp, "partial request");
             File.WriteAllText(responseTemp, "partial response");
             var dispatchCount = 0;

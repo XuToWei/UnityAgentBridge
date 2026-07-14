@@ -13,9 +13,9 @@ namespace AgentBridge.Tests.ProductEditMode
         [SetUp]
         public void SetUp()
         {
-            m_RunId = "atomic-" + Guid.NewGuid().ToString("N");
+            m_RunId = $"atomic-{Guid.NewGuid():N}";
             m_ResultDirectory = Path.Combine(BridgeSettings.RootDir, "test-results");
-            m_ResultPath = Path.Combine(m_ResultDirectory, m_RunId + ".json");
+            m_ResultPath = Path.Combine(m_ResultDirectory, $"{m_RunId}.json");
         }
 
         [TearDown]

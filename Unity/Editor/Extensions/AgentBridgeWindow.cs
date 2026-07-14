@@ -123,7 +123,7 @@ namespace AgentBridge
         private static GUIContent IconText(string iconName, string text)
         {
             var icon = EditorGUIUtility.IconContent(iconName);
-            return new GUIContent(" " + text, icon != null ? icon.image : null, text);
+            return new GUIContent($" {text}", icon != null ? icon.image : null, text);
         }
 
         private void OnGUI()
@@ -185,6 +185,12 @@ namespace AgentBridge
                 {
                     if (newRunning)
                     {
+                        Directory.CreateDirectory(BridgeSettings.RootDir);
+                        var gitIgnorePath = Path.Combine(BridgeSettings.RootDir, ".gitignore");
+                        if (!File.Exists(gitIgnorePath))
+                        {
+                            File.WriteAllText(gitIgnorePath, $"*{System.Environment.NewLine}");
+                        }
                         AgentBridgeHost.Start();
                     }
                     else
@@ -223,7 +229,7 @@ namespace AgentBridge
                 GUILayout.FlexibleSpace();
                 EditorGUILayout.LabelField(new GUIContent(
                         AgentBridgeHost.IsRunning ? "运行中" : "已停止",
-                        "根目录: " + BridgeSettings.RootDir + "\n轮询: " + BridgeSettings.PollIntervalMs + " ms"),
+                        $"根目录: {BridgeSettings.RootDir}\n轮询: {BridgeSettings.PollIntervalMs} ms"),
                     AgentBridgeHost.IsRunning ? m_SuccessMiniLabelStyle : EditorStyles.miniLabel, GUILayout.Width(72));
             }
         }
@@ -496,7 +502,7 @@ namespace AgentBridge
                 }
             }
             GUILayout.Space(CommandEnabledColumnWidth - 16f); // 补足"启用"列宽,使命令名与表头"命令"列对齐
-            var nameTip = locked ? cmd.Description + "(必须命令,不可禁用)" : cmd.Description;
+            var nameTip = locked ? $"{cmd.Description}(必须命令,不可禁用)" : cmd.Description;
             EditorGUILayout.LabelField(new GUIContent(cmd.Command, nameTip), EditorStyles.label,
                 GUILayout.Width(CommandNameColumnWidth));
             EditorGUILayout.LabelField(cmd.Description ?? "");
@@ -546,16 +552,16 @@ namespace AgentBridge
                 }
 
                 File.WriteAllText(fullPath, updated);
-                SetMarkdownStatus("已更新 AgentBridge 片段: " + relativePath, MessageType.Info);
+                SetMarkdownStatus($"已更新 AgentBridge 片段: {relativePath}", MessageType.Info);
                 AssetDatabase.Refresh();
             }
             catch (IOException ex)
             {
-                SetMarkdownStatus("写入失败: " + ex.Message, MessageType.Error);
+                SetMarkdownStatus($"写入失败: {ex.Message}", MessageType.Error);
             }
             catch (System.Exception ex)
             {
-                SetMarkdownStatus("写入失败: " + ex.Message, MessageType.Error);
+                SetMarkdownStatus($"写入失败: {ex.Message}", MessageType.Error);
             }
         }
 
@@ -845,7 +851,7 @@ namespace AgentBridge
 
         private static GUIContent SortHeaderContent(string label, bool ascending, string tooltip)
         {
-            return new GUIContent(label + (ascending ? " ▲" : " ▼"), tooltip);
+            return new GUIContent($"{label}{(ascending ? " ▲" : " ▼")}", tooltip);
         }
 
         private static bool TryUpsertManagedMarkdown(string current, string template, out string updated, out string error)
@@ -862,7 +868,7 @@ namespace AgentBridge
             {
                 updated = string.IsNullOrWhiteSpace(current)
                     ? block
-                    : current + (current.EndsWith("\n", System.StringComparison.Ordinal) ? "\n" : "\n\n") + block;
+                    : $"{current}{(current.EndsWith("\n", System.StringComparison.Ordinal) ? "\n" : "\n\n")}{block}";
                 return true;
             }
 
@@ -880,7 +886,7 @@ namespace AgentBridge
             }
 
             endIndex += MarkdownBlockEnd.Length;
-            updated = current.Substring(0, startIndex) + block + current.Substring(endIndex);
+            updated = $"{current.Substring(0, startIndex)}{block}{current.Substring(endIndex)}";
             return true;
         }
 
@@ -913,9 +919,7 @@ namespace AgentBridge
 
         private static string BuildManagedMarkdownBlock(string template)
         {
-            return MarkdownBlockStart + "\n"
-                + (template ?? "").Trim() + "\n"
-                + MarkdownBlockEnd + "\n";
+            return $"{MarkdownBlockStart}\n{(template ?? "").Trim()}\n{MarkdownBlockEnd}\n";
         }
 
         private bool TryLoadClaudeTemplate(out string template, out string error)
@@ -923,7 +927,7 @@ namespace AgentBridge
             template = null;
             error = null;
 
-            var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssetPath("Packages/" + PackageName);
+            var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssetPath($"Packages/{PackageName}");
             if (packageInfo == null)
             {
                 error = "未找到 Unity Agent Bridge 包路径。请确认包名仍为 me.xw.unityagentbridge，且当前窗口运行在该包已安装的项目中。";
@@ -933,7 +937,7 @@ namespace AgentBridge
             var agentPath = Path.Combine(packageInfo.resolvedPath, "AGENT.md");
             if (!File.Exists(agentPath))
             {
-                error = "未找到 AGENT.md: " + agentPath;
+                error = $"未找到 AGENT.md: {agentPath}";
                 return false;
             }
 
@@ -982,7 +986,7 @@ namespace AgentBridge
             }
             catch (IOException ex)
             {
-                error = "读取 AGENT.md 失败: " + ex.Message;
+                error = $"读取 AGENT.md 失败: {ex.Message}";
                 return false;
             }
         }

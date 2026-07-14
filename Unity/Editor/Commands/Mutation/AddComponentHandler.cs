@@ -22,7 +22,7 @@ namespace AgentBridge
             if (type == typeof(Transform) || type == typeof(RectTransform))
             {
                 throw new CommandException("COMPONENT_TYPE_NOT_ADDABLE",
-                    type.Name + " 由 GameObject 创建方式决定,不能后加");
+                    $"{type.Name} 由 GameObject 创建方式决定,不能后加");
             }
 
             Component component;

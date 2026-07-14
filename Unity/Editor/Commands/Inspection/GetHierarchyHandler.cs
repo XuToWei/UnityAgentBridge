@@ -115,7 +115,7 @@ namespace AgentBridge
                         break;
                     }
                     var child = frame.Transform.GetChild(i);
-                    var childPath = frame.Node.path + "/" + SceneObjectResolver.EscapePathSegment(child.name);
+                    var childPath = $"{frame.Node.path}/{SceneObjectResolver.EscapePathSegment(child.name)}";
                     var childNode = CreateNode(child, childPath);
                     frame.Node.children.Add(childNode);
                     childFrames.Add(new Frame(child, childNode, frame.Depth + 1));

@@ -73,7 +73,7 @@ namespace AgentBridge
             if (normalized.Length != values.Length)
             {
                 throw new CommandException(ErrorCodes.InvalidParams,
-                    propertyName + " 不能包含 null、空白或重复项");
+                    $"{propertyName} 不能包含 null、空白或重复项");
             }
             return normalized;
         }
@@ -90,7 +90,7 @@ namespace AgentBridge
                 catch (ArgumentException ex)
                 {
                     throw new CommandException(ErrorCodes.InvalidParams,
-                        "groupNames 含无效正则表达式:" + ex.Message);
+                        $"groupNames 含无效正则表达式:{ex.Message}");
                 }
             }
         }

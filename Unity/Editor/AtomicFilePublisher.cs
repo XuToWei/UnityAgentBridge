@@ -17,7 +17,7 @@ namespace AgentBridge
             Action<string> stageTempFile)
         {
             ValidateArguments(destination, stageTempFile);
-            var temp = destination + ".tmp";
+            var temp = $"{destination}.tmp";
             DeleteStaleTemp(temp);
             PublishCore(destination, false, temp, stageTempFile);
         }
@@ -32,7 +32,7 @@ namespace AgentBridge
             var directory = Path.GetDirectoryName(destination);
             var temp = Path.Combine(
                 string.IsNullOrEmpty(directory) ? "." : directory,
-                "." + Guid.NewGuid().ToString("N") + ".tmp");
+                $".{Guid.NewGuid():N}.tmp");
             PublishCore(destination, overwrite, temp, stageTempFile);
         }
 

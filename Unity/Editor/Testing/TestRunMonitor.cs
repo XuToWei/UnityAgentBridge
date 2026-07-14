@@ -60,7 +60,7 @@ namespace AgentBridge
             var savedScenes = HandleUnsavedScenes(ifUnsaved);
             EnsureEditorCanStart();
 
-            var runId = "test-run-" + Guid.NewGuid().ToString("N");
+            var runId = $"test-run-{Guid.NewGuid():N}";
             var record = new TestRunRecord
             {
                 RunId = runId,
@@ -98,7 +98,7 @@ namespace AgentBridge
                 ClearActiveState();
                 TestRunStore.DeleteBestEffort(runId);
                 throw new CommandException(TestErrorCodes.TestRunStartFailed,
-                    "启动 Unity 测试失败:" + TestResultLimits.TruncateRunText(ex.Message));
+                    $"启动 Unity 测试失败:{TestResultLimits.TruncateRunText(ex.Message)}");
             }
         }
 
@@ -178,14 +178,14 @@ namespace AgentBridge
             }
             catch (Exception ex)
             {
-                s_InitializationError = ex.GetType().Name + ":" + ex.Message;
+                s_InitializationError = $"{ex.GetType().Name}:{ex.Message}";
                 if (api != null)
                 {
                     UnityEngine.Object.DestroyImmediate(api);
                 }
                 s_Api = null;
                 s_Callbacks = null;
-                Debug.LogError("[AgentBridge] Unity Test Framework 初始化失败:" + s_InitializationError);
+                Debug.LogError($"[AgentBridge] Unity Test Framework 初始化失败:{s_InitializationError}");
             }
         }
 
@@ -223,7 +223,7 @@ namespace AgentBridge
             catch (CommandException ex)
             {
                 // 读取失败时不能假定运行已经结束；清锁会允许第二个 run 与未知 job 并发。
-                Debug.LogError("[AgentBridge] 恢复测试运行失败,保留活动锁:" + ex.Message);
+                Debug.LogError($"[AgentBridge] 恢复测试运行失败,保留活动锁:{ex.Message}");
             }
         }
 
@@ -236,7 +236,7 @@ namespace AgentBridge
             if (s_Api == null)
             {
                 throw new CommandException(TestErrorCodes.TestFrameworkUnavailable,
-                    "Unity Test Framework 不可用:" + (s_InitializationError ?? "初始化失败"));
+                    $"Unity Test Framework 不可用:{s_InitializationError ?? "初始化失败"}");
             }
         }
 
@@ -612,8 +612,8 @@ namespace AgentBridge
                     {
                         record.DetailsTruncated = true;
                         record.Message = TestResultLimits.TruncateRunText(
-                            record.Message + "\n收集测试明细失败:" + detailError.Message);
-                        Debug.LogError("[AgentBridge] 收集最终测试明细失败:" + detailError);
+                            $"{record.Message}\n收集测试明细失败:{detailError.Message}");
+                        Debug.LogError($"[AgentBridge] 收集最终测试明细失败:{detailError}");
                     }
                 }
                 else
@@ -632,9 +632,9 @@ namespace AgentBridge
                 record.DurationSeconds = ElapsedSeconds(record.StartedAt);
                 record.ResultState = "Interrupted";
                 record.Message = TestResultLimits.TruncateRunText(
-                    "序列化最终测试结果失败:" + ex.Message);
+                    $"序列化最终测试结果失败:{ex.Message}");
                 StageTerminal(record, "写入中断测试结果");
-                Debug.LogError("[AgentBridge] 处理测试完成回调失败:" + ex);
+                Debug.LogError($"[AgentBridge] 处理测试完成回调失败:{ex}");
             }
         }
 
@@ -709,7 +709,7 @@ namespace AgentBridge
             }
             catch (CommandException ex)
             {
-                Debug.LogError("[AgentBridge] 读取活动测试状态失败:" + ex.Message);
+                Debug.LogError($"[AgentBridge] 读取活动测试状态失败:{ex.Message}");
             }
             return null;
         }
@@ -909,8 +909,7 @@ namespace AgentBridge
                 if (s_TerminalCommitter.PendingRunId != record.RunId)
                 {
                     Debug.LogError(
-                        $"[AgentBridge] 测试终态提交冲突:等待 '{s_TerminalCommitter.PendingRunId}'," +
-                        $"拒绝覆盖为 '{record.RunId}'");
+                        $"[AgentBridge] 测试终态提交冲突:等待 '{s_TerminalCommitter.PendingRunId}',拒绝覆盖为 '{record.RunId}'");
                 }
                 TryCommitPendingTerminal();
                 return;
@@ -946,11 +945,10 @@ namespace AgentBridge
             EditorApplication.update += RetryTerminalPersistOnUpdate;
 
             var detail = failure is CommandException commandError
-                ? commandError.Code + ":" + commandError.Message
-                : failure?.GetType().Name + ":" + failure?.Message;
+                ? $"{commandError.Code}:{commandError.Message}"
+                : $"{failure?.GetType().Name}:{failure?.Message}";
             Debug.LogError(
-                $"[AgentBridge] {s_TerminalCommitter.Operation}失败:{detail};" +
-                $"{delay:0.##} 秒后重试,活动测试锁保持");
+                $"[AgentBridge] {s_TerminalCommitter.Operation}失败:{detail};{delay:0.##} 秒后重试,活动测试锁保持");
         }
 
         private static void RetryTerminalPersistOnUpdate()
@@ -986,15 +984,14 @@ namespace AgentBridge
             }
             catch (Exception ex)
             {
-                Debug.LogError("[AgentBridge] 读取测试 SessionState 失败:" + ex.Message);
+                Debug.LogError($"[AgentBridge] 读取测试 SessionState 失败:{ex.Message}");
             }
 
             if ((!string.IsNullOrEmpty(memoryRunId) && memoryRunId != committed.RunId) ||
                 (!string.IsNullOrEmpty(sessionRunId) && sessionRunId != committed.RunId))
             {
                 Debug.LogError(
-                    $"[AgentBridge] 测试终态 '{committed.RunId}' 已写盘,但当前活动锁属于 " +
-                    $"memory='{memoryRunId}',session='{sessionRunId}',不会清理不相关锁");
+                    $"[AgentBridge] 测试终态 '{committed.RunId}' 已写盘,但当前活动锁属于 memory='{memoryRunId}',session='{sessionRunId}',不会清理不相关锁");
                 return;
             }
 
@@ -1029,11 +1026,11 @@ namespace AgentBridge
             }
             catch (Exception ex)
             {
-                Debug.LogError("[AgentBridge] 清理测试 SessionState 失败:" + ex.Message);
+                Debug.LogError($"[AgentBridge] 清理测试 SessionState 失败:{ex.Message}");
                 try { SessionState.SetString(ActiveRunSessionKey, ""); }
                 catch (Exception fallbackError)
                 {
-                    Debug.LogError("[AgentBridge] 重置测试 SessionState 失败:" + fallbackError.Message);
+                    Debug.LogError($"[AgentBridge] 重置测试 SessionState 失败:{fallbackError.Message}");
                 }
             }
             s_ActiveRecord = null;
@@ -1060,13 +1057,13 @@ namespace AgentBridge
             public void RunStarted(ITestAdaptor testsToRun)
             {
                 try { OnRunStarted(testsToRun); }
-                catch (Exception ex) { Debug.LogError("[AgentBridge] RunStarted callback 失败:" + ex); }
+                catch (Exception ex) { Debug.LogError($"[AgentBridge] RunStarted callback 失败:{ex}"); }
             }
 
             public void RunFinished(ITestResultAdaptor result)
             {
                 try { OnRunFinished(result); }
-                catch (Exception ex) { Debug.LogError("[AgentBridge] RunFinished callback 失败:" + ex); }
+                catch (Exception ex) { Debug.LogError($"[AgentBridge] RunFinished callback 失败:{ex}"); }
             }
 
             public void TestStarted(ITestAdaptor test)
@@ -1077,13 +1074,13 @@ namespace AgentBridge
             public void TestFinished(ITestResultAdaptor result)
             {
                 try { OnTestFinished(result); }
-                catch (Exception ex) { Debug.LogError("[AgentBridge] TestFinished callback 失败:" + ex); }
+                catch (Exception ex) { Debug.LogError($"[AgentBridge] TestFinished callback 失败:{ex}"); }
             }
 
             public void OnError(string message)
             {
                 try { OnRunError(message); }
-                catch (Exception ex) { Debug.LogError("[AgentBridge] test error callback 失败:" + ex); }
+                catch (Exception ex) { Debug.LogError($"[AgentBridge] test error callback 失败:{ex}"); }
             }
         }
     }

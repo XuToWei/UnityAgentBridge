@@ -40,7 +40,7 @@ namespace AgentBridge
             }
             if (!string.IsNullOrEmpty(type))
             {
-                parts.Add("t:" + type);
+                parts.Add($"t:{type}");
             }
             var filter = string.Join(" ", parts);
 

@@ -174,8 +174,7 @@ namespace AgentBridge
 
             var extension = Path.GetExtension(path);
             var tempPath = AssetDatabase.GenerateUniqueAssetPath(
-                ParentDir(path) + "/__AgentBridgeReplacement_" +
-                System.Guid.NewGuid().ToString("N") + extension);
+                $"{ParentDir(path)}/__AgentBridgeReplacement_{System.Guid.NewGuid():N}{extension}");
             ScriptableObject replacement = null;
             try
             {

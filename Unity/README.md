@@ -16,7 +16,7 @@ https://github.com/XuToWei/UnityAgentBridge.git?path=Unity
 
 ## 启动
 
-加载后宿主经 `[InitializeOnLoad]` 自动启动,也可在 `Window/Agent Bridge` 顶部工具条启停 / 切失焦不节流。
+首次安装后,打开 `Window/Agent Bridge` 并点击**启用桥接**；此时才会创建 `.agentbridge` 并启动宿主。Domain Reload 仅在该目录已经存在时自动恢复宿主；目录不存在时,**启用桥接**按钮保持关闭。顶部工具条也可停止桥接 / 切失焦不节流。
 
 默认文件根目录:`<UnityProject>/.agentbridge/`。协议直接使用固定槽位 `request.json`、`processing.json`、`response.json`；这些文件只在 exchange 对应阶段存在。
 

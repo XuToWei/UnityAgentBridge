@@ -68,7 +68,7 @@ namespace AgentBridge
                 }
                 catch (ArgumentException ex)
                 {
-                    throw new CommandException(ErrorCodes.InvalidParams, "正则表达式无效: " + ex.Message);
+                    throw new CommandException(ErrorCodes.InvalidParams, $"正则表达式无效: {ex.Message}");
                 }
             }
 

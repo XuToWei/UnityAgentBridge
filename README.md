@@ -76,7 +76,7 @@ This repo's package lives in the `Unity/` subfolder (`me.xw.unityagentbridge`, r
   https://github.com/XuToWei/UnityAgentBridge.git?path=Unity
   ```
 
-The host auto-starts on load. The bridge root defaults to `<project>/.agentbridge/`; its transient protocol slots are `request.json`, `processing.json`, and `response.json`.
+After installing the package for the first time, open `Window ▸ Agent Bridge` and click **Enable Bridge**. This creates the bridge root at `<project>/.agentbridge/` and starts the host. A domain reload only restores the host automatically when that directory already exists; when it does not exist, the **Enable Bridge** toggle remains off. The transient protocol slots are `request.json`, `processing.json`, and `response.json`.
 
 ## Automated validation
 

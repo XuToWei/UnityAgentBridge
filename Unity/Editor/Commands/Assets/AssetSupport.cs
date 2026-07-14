@@ -188,7 +188,7 @@ namespace AgentBridge
             try
             {
                 payload = FileSnapshot.Capture(destination);
-                metadata = FileSnapshot.Capture(destination + ".meta");
+                metadata = FileSnapshot.Capture($"{destination}.meta");
                 var originalGuid = AssetDatabase.AssetPathToGUID(projectPath);
                 publishPayload();
                 AssetDatabase.ImportAsset(projectPath,
@@ -341,7 +341,7 @@ namespace AgentBridge
             return path.EndsWith(Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal) ||
                    path.EndsWith(Path.AltDirectorySeparatorChar.ToString(), StringComparison.Ordinal)
                 ? path
-                : path + Path.DirectorySeparatorChar;
+                : $"{path}{Path.DirectorySeparatorChar}";
         }
 
         private static bool PathEquals(string left, string right)
@@ -400,7 +400,7 @@ namespace AgentBridge
                 }
 
                 var backup = Path.Combine(Path.GetTempPath(),
-                    "AgentBridge-" + Guid.NewGuid().ToString("N") + ".rollback");
+                    $"AgentBridge-{Guid.NewGuid():N}.rollback");
                 File.Copy(path, backup, false);
                 return new FileSnapshot(path, true, backup);
             }
