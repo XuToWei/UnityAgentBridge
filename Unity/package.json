@@ -1,6 +1,6 @@
 {
   "name": "me.xw.unityagentbridge",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "displayName": "Agent Bridge",
   "description": "File-IPC bridge that lets an AI agent drive the Unity Editor — JSON request/response files, a polling Editor host, and an extensible command framework.",
   "unity": "2021.3",
