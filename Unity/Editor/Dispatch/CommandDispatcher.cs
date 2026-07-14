@@ -9,29 +9,86 @@ namespace AgentBridge
     /// </summary>
     internal static class CommandDispatcher
     {
+        private const string BatchCommandNotAllowed = "BATCH_COMMAND_NOT_ALLOWED";
+
         internal static Response Dispatch(Request request)
         {
-            ICommandHandler handler;
+            if (request == null)
+            {
+                return Error(ErrorCodes.InternalError, "ArgumentNullException: request is required");
+            }
+
+            if (!TryPrepare(
+                    request.Command,
+                    request.Params,
+                    CommandInvocationPolicy.Single,
+                    out var prepared,
+                    out var error))
+            {
+                return error;
+            }
+
+            return Dispatch(prepared);
+        }
+
+        /// <summary>
+        /// 一次完成 resolve、batch 策略、禁用状态与 schema 校验。
+        /// 返回的调用已准备完毕,执行时不再读取注册表或禁用状态。
+        /// </summary>
+        internal static bool TryPrepare(
+            string command,
+            JObject @params,
+            CommandInvocationPolicy policy,
+            out PreparedCommand prepared,
+            out Response error)
+        {
+            prepared = null;
+            error = null;
             try
             {
-                if (!CommandRegistry.TryGet(request.Command, out handler))
+                if (!CommandRegistry.TryGetRegistered(command, out var registration))
                 {
-                    return Error(ErrorCodes.UnknownCommand, $"no handler for '{request.Command}'");
+                    error = Error(ErrorCodes.UnknownCommand, $"no handler for '{command}'");
+                    return false;
                 }
 
-                if (CommandRegistry.IsDisabled(request.Command))
+                if (policy == CommandInvocationPolicy.BatchStep && !registration.BatchAllowed)
                 {
-                    return Error(ErrorCodes.CommandDisabled, $"command '{request.Command}' is disabled");
+                    error = Error(BatchCommandNotAllowed,
+                        $"command '{command}' cannot be used in batch");
+                    return false;
                 }
+
+                if (CommandRegistry.IsDisabled(command))
+                {
+                    error = Error(ErrorCodes.CommandDisabled, $"command '{command}' is disabled");
+                    return false;
+                }
+
+                var normalizedParams = @params ?? new JObject();
+                if (!JsonParamsValidator.TryValidate(
+                        normalizedParams, registration.ParamsSchema, out var validationError))
+                {
+                    error = Error(ErrorCodes.InvalidParams, validationError);
+                    return false;
+                }
+
+                prepared = new PreparedCommand(registration, normalizedParams);
+                return true;
             }
             catch (Exception ex)
             {
-                return Error(ErrorCodes.InternalError, Summarize(ex));
+                error = Error(ErrorCodes.InternalError, Summarize(ex));
+                return false;
             }
+        }
 
+        /// <summary>仅执行已准备调用并统一转换 handler 错误,不重复预检。</summary>
+        internal static Response Dispatch(PreparedCommand prepared)
+        {
             try
             {
-                var result = handler.Execute(request.Params ?? new JObject());
+                var result = prepared.Execute();
                 return Ok(result);
             }
             catch (CommandException ce)
@@ -75,6 +132,35 @@ namespace AgentBridge
                 }
             }
             return msg;
+        }
+    }
+
+    internal enum CommandInvocationPolicy
+    {
+        Single,
+        BatchStep
+    }
+
+    /// <summary>不可变的已准备调用;batch 可先收集全部实例再顺序执行。</summary>
+    internal sealed class PreparedCommand
+    {
+        internal PreparedCommand(CommandRegistry.RegisteredCommand registration, JObject @params)
+        {
+            Command = registration.Command;
+            m_Handler = registration.Handler;
+            m_Params = (JObject)@params.DeepClone();
+            SupportsUndoCollapse = registration.SupportsUndoCollapse;
+        }
+
+        private readonly ICommandHandler m_Handler;
+        private readonly JObject m_Params;
+
+        internal string Command { get; }
+        internal bool SupportsUndoCollapse { get; }
+
+        internal object Execute()
+        {
+            return m_Handler.Execute(m_Params);
         }
     }
 }

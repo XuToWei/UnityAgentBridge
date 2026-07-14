@@ -8,24 +8,36 @@ namespace AgentBridge
     public sealed class GetSelectionHandler : ICommandHandler
     {
         public string Command => "get_selection";
-        public string Description => "返回编辑器当前选中的 GameObject(name/path/instanceId 列表),空选中返回 []";
+        public string Description => "返回编辑器当前选中的场景 GameObject 列表、active 对象与数量";
         public string Group => "Inspection";
         public bool CanDisable => true;
+        public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
 
         public object Execute(JObject @params)
         {
-            var selection = Selection.gameObjects.Select(go => new
+            var all = Selection.gameObjects;
+            var sceneObjects = all.Where(go => go != null && !EditorUtility.IsPersistent(go) && go.scene.IsValid()).ToArray();
+            var selection = sceneObjects.Select(go => new
             {
                 name = go.name,
                 path = SceneObjectResolver.GetPath(go.transform),
-                instanceId = go.GetInstanceID()
+                instanceId = go.GetInstanceID(),
+                scenePath = go.scene.path
             }).ToArray();
-            return new { selection };
+            var active = Selection.activeGameObject;
+            var activeRef = active != null && !EditorUtility.IsPersistent(active) && active.scene.IsValid()
+                ? SceneObjectResolver.Describe(active)
+                : null;
+            return new
+            {
+                count = selection.Length,
+                selection,
+                active = activeRef,
+                ignoredPersistentCount = all.Length - sceneObjects.Length
+            };
         }
 
-        public JObject GetParamsSchema()
-        {
-            return JObject.Parse(@"{""type"":""object"",""properties"":{}}");
-        }
+        public JObject ParamsSchema { get; } =
+            JObject.Parse(@"{""type"":""object"",""properties"":{}}");
     }
 }

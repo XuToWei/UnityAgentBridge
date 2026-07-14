@@ -14,6 +14,7 @@ namespace AgentBridge
         public string Description => "执行编辑器菜单项(params.path),逃生舱;失败 → MENU_NOT_FOUND";
         public string Group => "Mutation";
         public bool CanDisable => true;
+        public CommandBatchMode BatchMode => CommandBatchMode.NotAllowed;
 
         public object Execute(JObject @params)
         {
@@ -32,10 +33,7 @@ namespace AgentBridge
             return new { executed = true };
         }
 
-        public JObject GetParamsSchema()
-        {
-            return JObject.Parse(
-                @"{""type"":""object"",""properties"":{""path"":{""type"":""string""}},""required"":[""path""]}");
-        }
+        public JObject ParamsSchema { get; } = JObject.Parse(
+            @"{""type"":""object"",""properties"":{""path"":{""type"":""string""}},""required"":[""path""]}");
     }
 }

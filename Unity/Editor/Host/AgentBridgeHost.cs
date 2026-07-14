@@ -35,7 +35,8 @@ namespace AgentBridge
             EditorApplication.update += Tick;
             s_Running = true;
             s_LastPollTime = 0;
-            Debug.Log($"[AgentBridge] started. root={s_Channel.RootDir} poll={BridgeSettings.PollIntervalMs}ms");
+            Debug.Log(
+                $"[AgentBridge] started. root={s_Channel.RootDir} poll={BridgeSettings.PollIntervalMs}ms");
         }
 
         public static void Stop()
@@ -59,33 +60,17 @@ namespace AgentBridge
             }
             s_LastPollTime = now;
 
-            FileChannel.ClaimedRequest claim;
             try
             {
-                // FileChannel 先恢复中断事务，再认领最新最终请求；本轮至多处理一个。
-                if (!s_Channel.TryTakeNext(out claim))
-                {
-                    return;
-                }
+                // FileChannel 在一个入口内完成 Claim、恢复、分发与终态响应发布。
+                s_Channel.TryProcessOne(
+                    CommandDispatcher.Dispatch,
+                    CurrentCommandsVersion);
             }
             catch (Exception e)
             {
-                Debug.LogError($"[AgentBridge] failed to claim or recover request: {e.Message}");
-                return;
-            }
-
-            var response = claim.CanDispatch
-                ? CommandDispatcher.Dispatch(claim.Request)
-                : CommandDispatcher.Error(claim.ErrorCode, claim.ErrorMessage);
-
-            try
-            {
-                s_Channel.Commit(claim, response, CurrentCommandsVersion());
-            }
-            catch (Exception e)
-            {
-                // commit point 前失败时 claim 保留在 processing，下轮按 INTERRUPTED 恢复。
-                Debug.LogError($"[AgentBridge] failed to commit response for {claim.Id}: {e.Message}");
+                // response commit point 前失败时 processing.json 保留，下轮返回 INTERRUPTED。
+                Debug.LogError($"[AgentBridge] failed to process exchange: {e.Message}");
             }
         }
 

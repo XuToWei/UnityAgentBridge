@@ -1,7 +1,10 @@
 {
     "name": "AgentBridge.Editor",
     "rootNamespace": "AgentBridge",
-    "references": [],
+    "references": [
+        "UnityEditor.TestRunner",
+        "UnityEngine.TestRunner"
+    ],
     "includePlatforms": [
         "Editor"
     ],

@@ -19,6 +19,7 @@ namespace AgentBridge
         public string Description => "按条件查工程资产(type/folder/query/limit),默认最多返回 200 条";
         public string Group => "Inspection";
         public bool CanDisable => true;
+        public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
 
         public object Execute(JObject @params)
         {
@@ -69,9 +70,7 @@ namespace AgentBridge
             return new { assets, count = assets.Length, truncated };
         }
 
-        public JObject GetParamsSchema()
-        {
-            return JObject.Parse(@"{
+        public JObject ParamsSchema { get; } = JObject.Parse(@"{
   ""type"": ""object"",
   ""properties"": {
     ""type"": { ""type"": ""string"" },
@@ -80,6 +79,5 @@ namespace AgentBridge
     ""limit"": { ""type"": ""integer"", ""minimum"": 1, ""maximum"": 1000, ""default"": 200 }
   }
 }");
-        }
     }
 }

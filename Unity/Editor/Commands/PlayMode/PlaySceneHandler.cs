@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
@@ -15,9 +14,6 @@ namespace AgentBridge
     /// </summary>
     public sealed class PlaySceneHandler : ICommandHandler
     {
-        private const string UnsavedError = "error";
-        private const string UnsavedSave = "save";
-        private const string UnsavedDiscard = "discard";
         private const string UnitySceneExtension = ".unity";
 
         public string Command => "play_scene";
@@ -27,6 +23,7 @@ namespace AgentBridge
 
         public string Group => "PlayMode";
         public bool CanDisable => true;
+        public CommandBatchMode BatchMode => CommandBatchMode.NotAllowed;
 
         public object Execute(JObject @params)
         {
@@ -45,11 +42,17 @@ namespace AgentBridge
             }
 
             var requireInBuildSettings = GetOptionalBool(@params, "requireInBuildSettings", false);
-            var ifUnsaved = GetIfUnsaved(@params);
+            var ifUnsaved = SceneCommandSupport.ReadIfUnsaved(
+                @params,
+                SceneUnsavedOperation.PlaySceneSwitch);
             var useCurrentScene = !HasValue(@params?["scenePath"]) && !HasValue(@params?["buildIndex"]);
             var target = ResolveTargetScene(@params, requireInBuildSettings);
             var alreadyOpen = useCurrentScene || IsOnlyOpenScene(target.Path);
-            var unsaved = HandleUnsavedScenes(ifUnsaved, alreadyOpen);
+            var unsaved = SceneCommandSupport.HandleUnsavedScenes(
+                ifUnsaved,
+                alreadyOpen
+                    ? SceneUnsavedOperation.PlaySceneAlreadyOpen
+                    : SceneUnsavedOperation.PlaySceneSwitch);
 
             var opened = false;
             if (!alreadyOpen)
@@ -173,10 +176,16 @@ namespace AgentBridge
                 throw new CommandException(PlayModeErrorCodes.InvalidScenePath, "缺 scenePath。");
             }
 
-            var path = scenePath.Replace('\\', '/').Trim();
-            if (Path.IsPathRooted(path) || path.Contains(":") || path.Contains("..") ||
-                (path != "Assets" && !path.StartsWith("Assets/", StringComparison.Ordinal)) ||
-                !path.EndsWith(UnitySceneExtension, StringComparison.OrdinalIgnoreCase))
+            string path;
+            try
+            {
+                path = AssetSupport.RequireFilePath(scenePath.Replace('\\', '/').Trim(), "scenePath");
+            }
+            catch (CommandException ex) when (ex.Code == AssetErrorCodes.InvalidAssetPath)
+            {
+                throw new CommandException(PlayModeErrorCodes.InvalidScenePath, ex.Message);
+            }
+            if (!path.EndsWith(UnitySceneExtension, StringComparison.OrdinalIgnoreCase))
             {
                 throw new CommandException(PlayModeErrorCodes.InvalidScenePath,
                     $"scenePath 必须是 Assets/ 下的 .unity 场景路径:'{scenePath}'");
@@ -223,7 +232,7 @@ namespace AgentBridge
             {
                 var scene = scenes[i];
                 var scenePath = (scene.path ?? "").Replace('\\', '/');
-                if (string.Equals(scenePath, path, StringComparison.OrdinalIgnoreCase))
+                if (SceneCommandSupport.PathsEqual(scenePath, path))
                 {
                     return new BuildSettingsInfo(true, scene.enabled ? enabledIndex : -1, scene.enabled);
                 }
@@ -243,81 +252,7 @@ namespace AgentBridge
             }
 
             var scene = SceneManager.GetSceneAt(0);
-            return scene.isLoaded && string.Equals((scene.path ?? "").Replace('\\', '/'), targetPath, StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static UnsavedResult HandleUnsavedScenes(string action, bool alreadyOpen)
-        {
-            var dirtyScenes = GetDirtyScenes();
-            var dirtySceneLabels = ToLabels(dirtyScenes);
-            var saved = new List<string>();
-            var discarded = new List<string>();
-
-            if (alreadyOpen || dirtyScenes.Count == 0)
-            {
-                return new UnsavedResult(dirtySceneLabels, saved.ToArray(), discarded.ToArray());
-            }
-
-            switch (action)
-            {
-                case UnsavedError:
-                    throw new CommandException(PlayModeErrorCodes.UnsavedScenes,
-                        "当前打开场景有未保存修改,默认不会切换场景:" + string.Join(", ", dirtySceneLabels));
-                case UnsavedSave:
-                    SaveDirtyScenes(dirtyScenes, saved);
-                    break;
-                case UnsavedDiscard:
-                    discarded.AddRange(dirtySceneLabels);
-                    break;
-            }
-
-            return new UnsavedResult(dirtySceneLabels, saved.ToArray(), discarded.ToArray());
-        }
-
-        private static List<Scene> GetDirtyScenes()
-        {
-            var result = new List<Scene>();
-            for (var i = 0; i < SceneManager.sceneCount; i++)
-            {
-                var scene = SceneManager.GetSceneAt(i);
-                if (scene.isDirty)
-                {
-                    result.Add(scene);
-                }
-            }
-            return result;
-        }
-
-        private static string[] ToLabels(List<Scene> scenes)
-        {
-            var result = new string[scenes.Count];
-            for (var i = 0; i < scenes.Count; i++)
-            {
-                result[i] = SceneLabel(scenes[i]);
-            }
-            return result;
-        }
-
-        private static string SceneLabel(Scene scene)
-        {
-            return string.IsNullOrEmpty(scene.path) ? scene.name : scene.path;
-        }
-
-        private static void SaveDirtyScenes(List<Scene> dirtyScenes, List<string> saved)
-        {
-            foreach (var scene in dirtyScenes)
-            {
-                if (string.IsNullOrEmpty(scene.path))
-                {
-                    throw new CommandException(PlayModeErrorCodes.SceneSaveFailed,
-                        $"未命名场景 '{scene.name}' 无法非交互保存,请先手动保存或传 ifUnsaved=discard。");
-                }
-                if (!EditorSceneManager.SaveScene(scene))
-                {
-                    throw new CommandException(PlayModeErrorCodes.SceneSaveFailed, $"保存场景失败:'{scene.path}'");
-                }
-                saved.Add(scene.path);
-            }
+            return scene.isLoaded && SceneCommandSupport.PathsEqual(scene.path, targetPath);
         }
 
         private static void OpenTargetScene(string path)
@@ -353,28 +288,21 @@ namespace AgentBridge
             }
         }
 
-        private static string GetIfUnsaved(JObject @params)
-        {
-            var token = @params?["ifUnsaved"];
-            if (!HasValue(token))
-            {
-                return UnsavedError;
-            }
-            var action = GetString(token, "ifUnsaved");
-            if (action != UnsavedError && action != UnsavedSave && action != UnsavedDiscard)
-            {
-                throw new CommandException(ErrorCodes.InvalidParams, "ifUnsaved 只能是 error / save / discard 之一。");
-            }
-            return action;
-        }
-
         private static int GetBuildIndex(JToken token)
         {
             if (token.Type != JTokenType.Integer)
             {
                 throw new CommandException(ErrorCodes.InvalidParams, "buildIndex 必须是 integer。");
             }
-            var value = token.Value<long>();
+            long value;
+            try
+            {
+                value = token.Value<long>();
+            }
+            catch (System.Exception ex) when (ex is System.OverflowException || ex is System.FormatException || ex is System.InvalidCastException)
+            {
+                throw new CommandException(ErrorCodes.InvalidParams, "buildIndex 必须在 0 到 int.MaxValue 之间。");
+            }
             if (value < 0 || value > int.MaxValue)
             {
                 throw new CommandException(ErrorCodes.InvalidParams, "buildIndex 必须在 0 到 int.MaxValue 之间。");
@@ -410,19 +338,16 @@ namespace AgentBridge
             return token != null && token.Type != JTokenType.Null;
         }
 
-        public JObject GetParamsSchema()
-        {
-            return JObject.Parse(@"{
+        public JObject ParamsSchema { get; } = JObject.Parse(@"{
   ""type"": ""object"",
   ""properties"": {
     ""stop"": { ""type"": ""boolean"", ""description"": ""true 时停止 Play Mode,其它参数忽略;默认 false。"" },
     ""scenePath"": { ""type"": ""string"", ""description"": ""可选 Assets/ 下的 .unity 场景路径;与 buildIndex 只能提供一个。均不提供时运行当前场景。"" },
-    ""buildIndex"": { ""type"": ""integer"", ""minimum"": 0, ""description"": ""可选 Build Settings 运行时 build index;与 scenePath 只能提供一个。"" },
+    ""buildIndex"": { ""type"": ""integer"", ""minimum"": 0, ""maximum"": 2147483647, ""description"": ""可选 Build Settings 运行时 build index;与 scenePath 只能提供一个。"" },
     ""requireInBuildSettings"": { ""type"": ""boolean"", ""description"": ""scenePath 是否必须存在于 Build Settings 且已启用,默认 false。"" },
     ""ifUnsaved"": { ""type"": ""string"", ""enum"": [""error"", ""save"", ""discard""], ""description"": ""切换场景前如何处理未保存场景,默认 error。"" }
   }
 }");
-        }
 
         private sealed class TargetScene
         {
@@ -452,18 +377,5 @@ namespace AgentBridge
             public bool Enabled { get; }
         }
 
-        private sealed class UnsavedResult
-        {
-            public UnsavedResult(string[] dirtyScenes, string[] savedScenes, string[] discardedScenes)
-            {
-                DirtyScenes = dirtyScenes;
-                SavedScenes = savedScenes;
-                DiscardedScenes = discardedScenes;
-            }
-
-            public string[] DirtyScenes { get; }
-            public string[] SavedScenes { get; }
-            public string[] DiscardedScenes { get; }
-        }
     }
 }

@@ -42,6 +42,7 @@ namespace AgentBridge
         private static MethodInfo s_StartGettingEntries;
         private static MethodInfo s_EndGettingEntries;
         private static MethodInfo s_GetEntryInternal;
+        private static MethodInfo s_Clear;
         private static FieldInfo s_MessageField;
         private static FieldInfo s_ModeField;
         private static FieldInfo s_FileField;
@@ -69,6 +70,7 @@ namespace AgentBridge
             s_StartGettingEntries = s_LogEntriesType.GetMethod("StartGettingEntries", Flags);
             s_EndGettingEntries = s_LogEntriesType.GetMethod("EndGettingEntries", Flags);
             s_GetEntryInternal = s_LogEntriesType.GetMethod("GetEntryInternal", Flags);
+            s_Clear = s_LogEntriesType.GetMethod("Clear", Flags, null, Type.EmptyTypes, null);
 
             const BindingFlags FieldFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
             s_MessageField = s_LogEntryType.GetField("message", FieldFlags);
@@ -86,8 +88,11 @@ namespace AgentBridge
             return true;
         }
 
-        /// <summary>抓取 Console 当前全部条目的快照。必须在主线程调用(handler 已保证)。</summary>
-        public static List<Entry> ReadAll()
+        /// <summary>
+        /// 从最新到最旧抓取 Console 快照,最多读取 maxEntries 条。total 返回 Console 总条数。
+        /// 必须在主线程调用(handler 已保证)。
+        /// </summary>
+        public static List<Entry> ReadLatest(int maxEntries, out int total)
         {
             if (!EnsureReflection())
             {
@@ -100,9 +105,11 @@ namespace AgentBridge
             var args = new object[2];
             // StartGettingEntries / EndGettingEntries 必须严格配对,否则触发原生断言,故用 try/finally。
             int count = (int)s_StartGettingEntries.Invoke(null, null);
+            total = count;
             try
             {
-                for (int i = 0; i < count; i++)
+                var first = Math.Max(0, count - Math.Max(0, maxEntries));
+                for (int i = count - 1; i >= first; i--)
                 {
                     args[0] = i;
                     args[1] = entry;
@@ -127,6 +134,30 @@ namespace AgentBridge
                 s_EndGettingEntries.Invoke(null, null);
             }
             return result;
+        }
+
+        /// <summary>清空当前 Console，并返回清空前条目数。Clear 缺失不影响只读 search_logs。</summary>
+        public static int Clear()
+        {
+            if (!EnsureReflection() || s_Clear == null)
+            {
+                throw new CommandException("CONSOLE_UNAVAILABLE",
+                    "无法清空编辑器 Console(内部 LogEntries.Clear 反射失败,可能是 Unity 版本不兼容)。");
+            }
+            ReadLatest(0, out var total);
+            try
+            {
+                s_Clear.Invoke(null, null);
+            }
+            catch (Exception ex)
+            {
+                var cause = ex is TargetInvocationException tie && tie.InnerException != null
+                    ? tie.InnerException
+                    : ex;
+                throw new CommandException("CONSOLE_UNAVAILABLE",
+                    "清空编辑器 Console 失败:" + cause.Message);
+            }
+            return total;
         }
 
         private static string ClassifyMode(int mode)

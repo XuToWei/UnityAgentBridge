@@ -11,12 +11,14 @@ namespace AgentBridge
     public sealed class SetPropertyHandler : ICommandHandler
     {
         public string Command => "set_property";
-        public string Description => "改某组件属性(component+propertyPath+value,支持嵌套路径);记录 Undo、标 dirty 不自动保存";
+        public string Description => "改组件属性;EditMode 记录 Undo/标 dirty,PlayMode 修改运行时副本并返回 persistent=false";
         public string Group => "Mutation";
         public bool CanDisable => true;
+        public CommandBatchMode BatchMode => CommandBatchMode.AllowedWithUndoCollapse;
 
         public object Execute(JObject @params)
         {
+            var persistent = ObjectMutationSupport.RequireStableState(Command);
             var compRef = @params?["component"]?.ToObject<ComponentRef>();
             var propertyPath = @params?["propertyPath"]?.Value<string>();
             if (string.IsNullOrEmpty(propertyPath))
@@ -38,56 +40,48 @@ namespace AgentBridge
                 }
 
                 PropertyDeserializer.Apply(prop, value);          // 类型不符 → PROPERTY_TYPE_MISMATCH
-                so.ApplyModifiedProperties();                     // 内建 Undo 注册(一条命令一条撤销)
-            }
-
-            EditorUtility.SetDirty(comp);
-            if (go.scene.IsValid())
-            {
-                UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(go.scene);
+                using (var mutation = ObjectMutationSupport.BeginUndo(Command, persistent))
+                {
+                    mutation.Record(comp);
+                    so.ApplyModifiedPropertiesWithoutUndo();
+                    if (persistent)
+                    {
+                        EditorUtility.SetDirty(comp);
+                        PrefabUtility.RecordPrefabInstancePropertyModifications(comp);
+                    }
+                    ObjectMutationSupport.MarkSceneDirty(go, persistent);
+                    mutation.Complete();
+                }
             }
 
             return new
             {
-                @object = new
-                {
-                    name = go.name,
-                    path = SceneObjectResolver.GetPath(go.transform),
-                    instanceId = go.GetInstanceID(),
-                    active = go.activeSelf
-                },
+                @object = SceneObjectResolver.Describe(go),
                 component = comp.GetType().FullName,
                 propertyPath,
-                applied = true
+                applied = true,
+                persistent
             };
         }
 
-        public JObject GetParamsSchema()
+        public JObject ParamsSchema { get; } = CreateParamsSchema();
+
+        private static JObject CreateParamsSchema()
         {
-            return JObject.Parse(@"{
-  ""type"": ""object"",
-  ""properties"": {
-    ""component"": {
-      ""type"": ""object"",
-      ""description"": ""组件引用;可直接使用 get_object 返回的 components[] 项。"",
-      ""properties"": {
-        ""object"": {
-          ""type"": ""object"",
-          ""properties"": {
-            ""path"": { ""type"": ""string"" },
-            ""instanceId"": { ""type"": ""integer"" }
-          }
-        },
-        ""type"": { ""type"": ""string"" },
-        ""index"": { ""type"": ""integer"", ""minimum"": 0, ""default"": 0 }
-      },
-      ""required"": [""object"", ""type""]
-    },
-    ""propertyPath"": { ""type"": ""string"" },
-    ""value"": {}
-  },
-  ""required"": [""component"", ""propertyPath""]
-}");
+            var component = SceneObjectResolver.CreateComponentRefSchema();
+            component["description"] =
+                "组件引用;可直接使用 get_object 返回的 components[] 项。";
+            return new JObject
+            {
+                ["type"] = "object",
+                ["properties"] = new JObject
+                {
+                    ["component"] = component,
+                    ["propertyPath"] = new JObject { ["type"] = "string", ["minLength"] = 1 },
+                    ["value"] = new JObject()
+                },
+                ["required"] = new JArray("component", "propertyPath", "value")
+            };
         }
     }
 }

@@ -1,0 +1,24 @@
+using System.Linq;
+using Newtonsoft.Json.Linq;
+using UnityEngine.SceneManagement;
+
+namespace AgentBridge
+{
+    public sealed class ListScenesHandler : ICommandHandler
+    {
+        public string Command => "list_scenes";
+        public string Description => "列出当前 Editor 已加载场景:name/path/handle/active/dirty/rootCount/buildSettings";
+        public string Group => "Scenes";
+        public bool CanDisable => true;
+        public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
+
+        public object Execute(JObject @params)
+        {
+            var scenes = Enumerable.Range(0, SceneManager.sceneCount)
+                .Select(i => SceneCommandSupport.Describe(SceneManager.GetSceneAt(i))).ToArray();
+            return new { count = scenes.Length, scenes };
+        }
+
+        public JObject ParamsSchema { get; } = new JObject();
+    }
+}

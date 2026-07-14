@@ -5,7 +5,8 @@
   "description": "File-IPC bridge that lets an AI agent drive the Unity Editor — JSON request/response files, a polling Editor host, and an extensible command framework.",
   "unity": "2021.3",
   "dependencies": {
-    "com.unity.nuget.newtonsoft-json": "3.2.1"
+    "com.unity.nuget.newtonsoft-json": "3.2.1",
+    "com.unity.test-framework": "1.1.33"
   },
   "keywords": [
     "agent",

@@ -21,6 +21,9 @@ namespace AgentBridge
         /// <summary>请求已认领但响应未提交，执行结果未知。</summary>
         public const string Interrupted = "INTERRUPTED";
 
+        /// <summary>命令结果序列化后超过文件通道允许的响应字节上限。</summary>
+        public const string ResponseTooLarge = "RESPONSE_TOO_LARGE";
+
         /// <summary>框架内部错误。</summary>
         public const string InternalError = "INTERNAL_ERROR";
     }

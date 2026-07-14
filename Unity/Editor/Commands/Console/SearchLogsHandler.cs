@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text.RegularExpressions;
 using Newtonsoft.Json.Linq;
@@ -16,6 +17,10 @@ namespace AgentBridge
     {
         private const int DefaultLimit = 100;
         private const int MaxLimit = 1000;
+        private const int MaxScannedEntries = 10000;
+        private const int MaxQueryLength = 4096;
+        private const int SearchBudgetMs = 750;
+        private static readonly TimeSpan RegexTimeout = TimeSpan.FromMilliseconds(50);
 
         public string Command => "search_logs";
 
@@ -24,6 +29,7 @@ namespace AgentBridge
 
         public string Group => "Console";
         public bool CanDisable => true;
+        public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
 
         public object Execute(JObject @params)
         {
@@ -32,11 +38,11 @@ namespace AgentBridge
             var ignoreCase = @params?["ignoreCase"]?.ToObject<bool?>() ?? true;
             var typeFilter = @params?["type"]?.Value<string>();
             var limit = @params?["limit"]?.ToObject<int?>() ?? DefaultLimit;
-            if (limit <= 0)
+            if (query != null && query.Length > MaxQueryLength)
             {
-                limit = DefaultLimit;
+                throw new CommandException(ErrorCodes.InvalidParams,
+                    $"query 最长 {MaxQueryLength} 个字符");
             }
-            limit = Math.Min(limit, MaxLimit);
 
             if (!string.IsNullOrEmpty(typeFilter))
             {
@@ -58,7 +64,7 @@ namespace AgentBridge
                     {
                         options |= RegexOptions.IgnoreCase;
                     }
-                    regex = new Regex(query, options);
+                    regex = new Regex(query, options, RegexTimeout);
                 }
                 catch (ArgumentException ex)
                 {
@@ -66,12 +72,18 @@ namespace AgentBridge
                 }
             }
 
-            var all = ConsoleLogReader.ReadAll();
+            var all = ConsoleLogReader.ReadLatest(MaxScannedEntries, out var total);
+            var stopwatch = Stopwatch.StartNew();
 
             var comparison = ignoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
             var matched = new List<ConsoleLogReader.Entry>();
             foreach (var e in all)
             {
+                if (stopwatch.ElapsedMilliseconds > SearchBudgetMs)
+                {
+                    throw new CommandException("LOG_SEARCH_TIMEOUT",
+                        $"日志搜索超过 {SearchBudgetMs}ms;请缩小 query/type 范围");
+                }
                 if (!string.IsNullOrEmpty(typeFilter) && e.Type != typeFilter)
                 {
                     continue;
@@ -79,9 +91,18 @@ namespace AgentBridge
                 if (!string.IsNullOrEmpty(query))
                 {
                     var message = e.Message ?? "";
-                    var hit = regex != null
-                        ? regex.IsMatch(message)
-                        : message.IndexOf(query, comparison) >= 0;
+                    bool hit;
+                    try
+                    {
+                        hit = regex != null
+                            ? regex.IsMatch(message)
+                            : message.IndexOf(query, comparison) >= 0;
+                    }
+                    catch (RegexMatchTimeoutException)
+                    {
+                        throw new CommandException("REGEX_TIMEOUT",
+                            $"正则表达式单条匹配超过 {RegexTimeout.TotalMilliseconds:0}ms;请简化表达式");
+                    }
                     if (!hit)
                     {
                         continue;
@@ -101,25 +122,24 @@ namespace AgentBridge
 
             return new
             {
-                total = all.Count,       // Console 里总条目数
-                matched = matched.Count, // 命中过滤/搜索的条目数
+                total,                   // Console 里总条目数
+                scanned = all.Count,     // 从最新开始实际扫描的条目数
+                scanTruncated = total > all.Count,
+                matched = matched.Count, // 已扫描范围内命中过滤/搜索的条目数
                 truncated,               // 命中数超过 limit,已截断
                 entries
             };
         }
 
-        public JObject GetParamsSchema()
-        {
-            return JObject.Parse(@"{
+        public JObject ParamsSchema { get; } = JObject.Parse(@"{
   ""type"": ""object"",
   ""properties"": {
-    ""query"": { ""type"": ""string"", ""description"": ""搜索词;默认按子串匹配 message,regex=true 时按正则。留空则只按 type 过滤。"" },
+    ""query"": { ""type"": ""string"", ""maxLength"": 4096, ""description"": ""搜索词;默认按子串匹配 message,regex=true 时按正则。留空则只按 type 过滤。"" },
     ""regex"": { ""type"": ""boolean"", ""description"": ""query 是否按正则匹配,默认 false。"" },
     ""ignoreCase"": { ""type"": ""boolean"", ""description"": ""是否忽略大小写,默认 true。"" },
     ""type"": { ""type"": ""string"", ""enum"": [""error"", ""warning"", ""log""], ""description"": ""只返回该类型的条目;缺省不限。"" },
-    ""limit"": { ""type"": ""integer"", ""description"": ""返回条目上限,默认 100,最多 1000。"" }
+    ""limit"": { ""type"": ""integer"", ""minimum"": 1, ""maximum"": 1000, ""default"": 100, ""description"": ""返回条目上限,默认 100,最多 1000。"" }
   }
 }");
-        }
     }
 }

@@ -10,7 +10,11 @@ namespace AgentBridge
     public sealed class CompileResult
     {
         [JsonProperty("compiling")] public bool Compiling { get; set; }
+        [JsonProperty("generation")] public int Generation { get; set; }
+        [JsonProperty("requestedAt")] public string RequestedAt { get; set; }
         [JsonProperty("compiledAt")] public string CompiledAt { get; set; }
+        [JsonProperty("requestFailed")] public bool RequestFailed { get; set; }
+        [JsonProperty("requestError")] public string RequestError { get; set; }
         [JsonProperty("messages")] public List<CompileMessage> Messages { get; set; } = new List<CompileMessage>();
     }
 }

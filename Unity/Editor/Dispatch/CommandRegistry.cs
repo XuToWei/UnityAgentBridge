@@ -1,193 +1,309 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEngine;
 
 namespace AgentBridge
 {
     /// <summary>
-    /// 命令注册表。通过 Unity TypeCache 查找实现 ICommandHandler 的具体类,实例化后按 Command 名建索引。
-    /// 命令名重复时拒绝注册并记录错误日志,避免静默覆盖。
-    /// 扩展重编译后,新的 handler 会在下次重建时自动出现。
-    /// 同时收集每个命令的描述和参数 schema,并计算可见命令集的内容版本。
+    /// 命令注册表。一次 TypeCache 扫描完成 handler 实例化、元数据读取和 schema 校验,
+    /// 随后以不可变快照同时服务 dispatch、list_commands、batch 和命令管理器。
     /// </summary>
     public static class CommandRegistry
     {
-        private static readonly Dictionary<string, ICommandHandler> s_Handlers =
-            new Dictionary<string, ICommandHandler>(StringComparer.Ordinal);
+        private static CommandSnapshot s_Snapshot;
 
-        // 已注册命令的元数据,按命令名排序(决定 Version hash 的稳定性)。
-        private static readonly List<CommandInfo> s_Infos = new List<CommandInfo>();
-
-        // 被命令管理器禁用的命令名:仍注册,但从 list_commands/Version 剔除,dispatch 拒调。
-        // 这是进程内状态,domain reload 后由 CommandToggle.Reapply 从 EditorPrefs 重建。
-        private static readonly HashSet<string> s_Disabled = new HashSet<string>(StringComparer.Ordinal);
-
-        // 声明 CanDisable=false 的命令名(协议刚需,不可被禁用)。Rebuild 时由 handler 收集。
-        private static readonly HashSet<string> s_NonDisablable = new HashSet<string>(StringComparer.Ordinal);
-
-        private static bool s_Built;
+        // 禁用状态与命令发现快照分离:启停命令只需替换集合并重算可见版本,无需重新扫描类型。
+        private static HashSet<string> s_Disabled = new HashSet<string>(StringComparer.Ordinal);
         private static string s_Version = "";
 
-        /// <summary>当前已注册的命令名(只读快照)。</summary>
-        public static IReadOnlyCollection<string> Commands
-        {
-            get
-            {
-                if (!s_Built)
-                {
-                    Rebuild();
-                }
-                return s_Handlers.Keys.ToArray();
-            }
-        }
-
-        /// <summary>命令集内容 hash:对排序后命令元数据的 JSON 序列化算 MD5 取短前缀。同一命令集恒定。</summary>
+        /// <summary>可见命令集的确定性内容 hash。</summary>
         public static string Version
         {
             get
             {
-                if (!s_Built)
-                {
-                    Rebuild();
-                }
+                EnsureBuilt();
                 return s_Version;
             }
         }
 
-        /// <summary>可见(未禁用)命令的元数据(供 list_commands)。禁用命令从清单剔除。</summary>
+        /// <summary>可见命令元数据的只读副本。schema 不与注册快照共享可变 JObject。</summary>
         public static IReadOnlyList<CommandInfo> GetAll()
         {
-            if (!s_Built)
-            {
-                Rebuild();
-            }
-            return VisibleInfos();
+            EnsureBuilt();
+            return Array.AsReadOnly(CreateVisibleInfos(s_Snapshot.Registrations, s_Disabled));
         }
 
-        /// <summary>设置禁用命令名单。注册表未构建时只保存状态,避免 domain reload 立即扫描命令。</summary>
+        /// <summary>
+        /// 一次性替换禁用名单。相同状态不会重复计算 commandsVersion。
+        /// 注册表尚未构建时仅保存状态,避免 domain reload 立即触发 TypeCache 扫描。
+        /// </summary>
         public static void SetDisabledCommands(IEnumerable<string> names)
         {
-            s_Disabled.Clear();
-            if (names != null)
+            var next = NormalizeNames(names);
+            if (s_Snapshot != null)
             {
-                foreach (var n in names)
-                {
-                    if (!string.IsNullOrEmpty(n))
-                    {
-                        s_Disabled.Add(n);
-                    }
-                }
+                next.RemoveWhere(command => !CanDisable(s_Snapshot, command));
             }
 
-            if (s_Built)
+            if (s_Disabled.SetEquals(next))
             {
-                s_Disabled.ExceptWith(s_NonDisablable);
-                s_Version = ComputeVersion(VisibleInfos());
+                return;
+            }
+
+            s_Disabled = next;
+            if (s_Snapshot != null)
+            {
+                s_Version = ComputeVersion(s_Snapshot.Registrations, s_Disabled);
             }
         }
 
-        /// <summary>某命令当前是否被禁用。</summary>
+        /// <summary>某命令当前是否被禁用。不主动触发注册表构建。</summary>
         public static bool IsDisabled(string command)
         {
-            return s_Disabled.Contains(command);
+            return !string.IsNullOrEmpty(command) && s_Disabled.Contains(command);
         }
 
-        /// <summary>某命令是否允许被禁用(由 handler.CanDisable 声明,默认允许)。</summary>
+        /// <summary>由 handler.CanDisable 声明;未知命令返回 true。</summary>
         public static bool CanDisable(string command)
         {
-            if (!s_Built)
-            {
-                Rebuild();
-            }
-            return !s_NonDisablable.Contains(command);
+            EnsureBuilt();
+            return CanDisable(s_Snapshot, command);
         }
 
-        // 可见 = 已注册且不在禁用名单(已排序,保持 Version 稳定)。
-        private static List<CommandInfo> VisibleInfos()
-        {
-            return s_Infos.Where(i => !s_Disabled.Contains(i.Command)).ToList();
-        }
-
-        /// <summary>重新扫描并注册所有 handler。domain reload 后静态状态重置,首次查询时自动重建。</summary>
+        /// <summary>重新生成唯一注册快照。单个第三方 handler 失败不会污染或中止其余注册。</summary>
         public static void Rebuild()
         {
-            s_Handlers.Clear();
-            s_Infos.Clear();
-            s_NonDisablable.Clear();
+            var byName = new Dictionary<string, RegisteredCommand>(StringComparer.Ordinal);
+            var types = new List<Type>(TypeCache.GetTypesDerivedFrom<ICommandHandler>());
+            types.Sort(CompareHandlerTypes);
 
-            foreach (var type in TypeCache.GetTypesDerivedFrom<ICommandHandler>())
+            foreach (var type in types)
             {
-                if (type.IsAbstract || type.IsInterface)
+                try
                 {
-                    continue;
-                }
-                if (type.GetConstructor(Type.EmptyTypes) == null)
-                {
-                    Debug.LogError($"[AgentBridge] {type.FullName} 实现 ICommandHandler 但缺少公共无参构造,跳过。");
-                    continue;
-                }
+                    if (type.IsAbstract || type.IsInterface)
+                    {
+                        continue;
+                    }
+                    if (type.GetConstructor(Type.EmptyTypes) == null)
+                    {
+                        Debug.LogError($"[AgentBridge] {type.FullName} 实现 ICommandHandler 但缺少公共无参构造,跳过。");
+                        continue;
+                    }
 
-                var handler = (ICommandHandler)Activator.CreateInstance(type);
-                var name = handler.Command;
-                if (string.IsNullOrEmpty(name))
-                {
-                    Debug.LogError($"[AgentBridge] {type.FullName} 的 Command 为空,跳过。");
-                    continue;
-                }
-                if (s_Handlers.TryGetValue(name, out var existing))
-                {
-                    Debug.LogError(
-                        $"[AgentBridge] 命令名 '{name}' 重复({type.FullName}),拒绝注册;保留 {existing.GetType().FullName}。");
-                    continue;
-                }
+                    var handler = (ICommandHandler)Activator.CreateInstance(type);
+                    var command = handler.Command;
+                    if (string.IsNullOrEmpty(command))
+                    {
+                        Debug.LogError($"[AgentBridge] {type.FullName} 的 Command 为空,跳过。");
+                        continue;
+                    }
+                    if (byName.TryGetValue(command, out var existing))
+                    {
+                        Debug.LogError($"[AgentBridge] 命令名 '{command}' 重复({type.FullName}),拒绝注册;保留 {existing.Handler.GetType().FullName}。");
+                        continue;
+                    }
 
-                s_Handlers[name] = handler;
-                if (!handler.CanDisable)
-                {
-                    s_NonDisablable.Add(name);
+                    // 扩展控制的属性全部先求值并校验,成功后才把完整描述符加入局部快照。
+                    var description = handler.Description ?? "";
+                    var group = handler.Group ?? "";
+                    var canDisable = handler.CanDisable;
+                    var batchMode = handler.BatchMode;
+                    if (!IsValidBatchMode(batchMode))
+                    {
+                        Debug.LogError($"[AgentBridge] handler {type.FullName} 的 BatchMode 无效:{(int)batchMode},跳过。");
+                        continue;
+                    }
+
+                    var schema = (JObject)(handler.ParamsSchema ?? new JObject()).DeepClone();
+                    if (!JsonParamsValidator.TryValidateSchema(schema, out var schemaError))
+                    {
+                        Debug.LogError($"[AgentBridge] handler {type.FullName} 的 params schema 无效,跳过:{schemaError}");
+                        continue;
+                    }
+
+                    byName.Add(command, new RegisteredCommand(
+                        handler,
+                        command,
+                        description,
+                        group,
+                        canDisable,
+                        schema,
+                        batchMode));
                 }
-                s_Infos.Add(new CommandInfo
+                catch (Exception ex)
                 {
-                    Command = name,
-                    Description = handler.Description,
-                    ParamsSchema = handler.GetParamsSchema()
-                });
+                    Debug.LogError($"[AgentBridge] handler {type.FullName} 注册失败,已隔离并跳过:{ex.GetType().Name}:{ex.Message}");
+                }
             }
 
-            s_Infos.Sort((a, b) => string.CompareOrdinal(a.Command, b.Command));
-            s_Disabled.ExceptWith(s_NonDisablable);
-            s_Version = ComputeVersion(VisibleInfos()); // Version 基于可见集(剔除禁用),与 list_commands 一致
-            s_Built = true;
+            var registrations = new RegisteredCommand[byName.Count];
+            byName.Values.CopyTo(registrations, 0);
+            Array.Sort(registrations, CompareRegistrations);
+
+            var next = new CommandSnapshot(byName, registrations);
+            var disabled = new HashSet<string>(s_Disabled, StringComparer.Ordinal);
+            disabled.RemoveWhere(command => !CanDisable(next, command));
+
+            // 快照在完全构造后一次替换,查询方不会看到半注册状态。
+            s_Disabled = disabled;
+            s_Snapshot = next;
+            s_Version = ComputeVersion(next.Registrations, disabled);
         }
 
-        public static bool TryGet(string command, out ICommandHandler handler)
+        /// <summary>供命令调用模块一次取得 handler、schema 与 batch 策略。</summary>
+        internal static bool TryGetRegistered(string command, out RegisteredCommand registration)
         {
-            if (!s_Built)
+            EnsureBuilt();
+            return s_Snapshot.TryGet(command, out registration);
+        }
+
+        /// <summary>供命令管理器读取同一份注册快照,不会重新扫描或实例化 handler。</summary>
+        internal static IReadOnlyList<RegisteredCommand> GetRegistrations()
+        {
+            EnsureBuilt();
+            return s_Snapshot.Registrations;
+        }
+
+        private static void EnsureBuilt()
+        {
+            if (s_Snapshot == null)
             {
                 Rebuild();
             }
-            return s_Handlers.TryGetValue(command, out handler);
         }
 
-        // 确定性内容 hash:对排序后的命令元数据 JSON 序列化算 MD5 取前 8 字节。
-        // 禁用 string.GetHashCode()(.NET Core 跨进程随机化,会让 Version 每次重启变)。
-        private static string ComputeVersion(List<CommandInfo> infos)
+        private static HashSet<string> NormalizeNames(IEnumerable<string> names)
         {
-            var canonical = JsonConvert.SerializeObject(infos);
+            var result = new HashSet<string>(names ?? Array.Empty<string>(), StringComparer.Ordinal);
+            result.RemoveWhere(string.IsNullOrEmpty);
+            return result;
+        }
+
+        private static bool CanDisable(CommandSnapshot snapshot, string command)
+        {
+            return snapshot == null ||
+                   !snapshot.TryGet(command, out var registration) ||
+                   registration.CanDisable;
+        }
+
+        private static int CompareHandlerTypes(Type left, Type right)
+        {
+            return StringComparer.Ordinal.Compare(left.AssemblyQualifiedName, right.AssemblyQualifiedName);
+        }
+
+        private static int CompareRegistrations(RegisteredCommand left, RegisteredCommand right)
+        {
+            return StringComparer.Ordinal.Compare(left.Command, right.Command);
+        }
+
+        private static bool IsValidBatchMode(CommandBatchMode mode)
+        {
+            return mode == CommandBatchMode.NotAllowed ||
+                   mode == CommandBatchMode.Allowed ||
+                   mode == CommandBatchMode.AllowedWithUndoCollapse;
+        }
+
+        private static CommandInfo[] CreateVisibleInfos(
+            IReadOnlyList<RegisteredCommand> registrations,
+            ISet<string> disabled)
+        {
+            var infos = new List<CommandInfo>(registrations.Count);
+            for (var index = 0; index < registrations.Count; index++)
+            {
+                var registration = registrations[index];
+                if (!disabled.Contains(registration.Command))
+                {
+                    infos.Add(registration.CreatePublicInfo());
+                }
+            }
+            return infos.ToArray();
+        }
+
+        private static string ComputeVersion(
+            IReadOnlyList<RegisteredCommand> registrations,
+            ISet<string> disabled)
+        {
+            // 保持原有序列化字段和排序,同一可见命令集跨进程得到相同版本。
+            var canonical = JsonConvert.SerializeObject(CreateVisibleInfos(registrations, disabled));
             using (var md5 = MD5.Create())
             {
                 var bytes = md5.ComputeHash(Encoding.UTF8.GetBytes(canonical));
                 var hex = new StringBuilder(16);
-                for (var k = 0; k < 8; k++)
+                for (var index = 0; index < 8; index++)
                 {
-                    hex.Append(bytes[k].ToString("x2"));
+                    hex.Append(bytes[index].ToString("x2"));
                 }
                 return hex.ToString();
+            }
+        }
+
+        private sealed class CommandSnapshot
+        {
+            private readonly Dictionary<string, RegisteredCommand> m_ByName;
+
+            internal CommandSnapshot(
+                Dictionary<string, RegisteredCommand> byName,
+                RegisteredCommand[] registrations)
+            {
+                m_ByName = byName;
+                Registrations = Array.AsReadOnly(registrations);
+            }
+
+            internal IReadOnlyList<RegisteredCommand> Registrations { get; }
+
+            internal bool TryGet(string command, out RegisteredCommand registration)
+            {
+                return m_ByName.TryGetValue(command ?? "", out registration);
+            }
+        }
+
+        internal sealed class RegisteredCommand
+        {
+            internal RegisteredCommand(
+                ICommandHandler handler,
+                string command,
+                string description,
+                string group,
+                bool canDisable,
+                JObject paramsSchema,
+                CommandBatchMode batchMode)
+            {
+                Handler = handler;
+                Command = command;
+                Description = description;
+                Group = group;
+                CanDisable = canDisable;
+                ParamsSchema = paramsSchema;
+                BatchMode = batchMode;
+            }
+
+            internal ICommandHandler Handler { get; }
+            internal string Command { get; }
+            internal string Description { get; }
+            internal string Group { get; }
+            internal bool CanDisable { get; }
+            internal JObject ParamsSchema { get; }
+            internal CommandBatchMode BatchMode { get; }
+            internal bool BatchAllowed => BatchMode != CommandBatchMode.NotAllowed;
+            internal bool SupportsUndoCollapse =>
+                BatchMode == CommandBatchMode.AllowedWithUndoCollapse;
+
+            internal CommandInfo CreatePublicInfo()
+            {
+                return new CommandInfo
+                {
+                    Command = Command,
+                    Description = Description,
+                    ParamsSchema = (JObject)ParamsSchema.DeepClone(),
+                    BatchAllowed = BatchAllowed,
+                    SupportsUndoCollapse = SupportsUndoCollapse
+                };
             }
         }
     }

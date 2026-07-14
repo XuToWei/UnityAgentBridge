@@ -1,168 +1,111 @@
-# Unity Agent Bridge — 驱动协议(面向 AI Agent)
+# Unity Agent Bridge — 驱动协议（面向 AI Agent）
 
-## 你的职责
+本文档是外部 Agent 驱动 Unity Editor 的 canonical contract。命令清单不写在文档里；实际 command、params schema 与 batch policy 始终来自运行时 `list_commands`。
 
-**你是驱动这座桥的 AI Agent(主要 Claude Code)。** 本工程接入了 Unity Agent Bridge:你可以**通过读写文件**让 Unity 编辑器在主线程执行命令——无网络、无 socket。
+## 铁律
 
-本文档是你与 Unity 之间的**契约**。只要这个工程在,你的每一次驱动都必须遵守它。读完你就该知道:命令写去哪、响应从哪读、有哪些命令可用、出错怎么办。
+1. **单通讯和显式确认**：发一条、等一条、完整读入响应、等待 `processing.json` 消失、删除 `response.json` 作为 ack，然后才能发下一条。Agent 不得同时发布第二条最终请求。
+2. **固定槽位和原子发布**：先写 `request.json.tmp`，再原子 rename 为 `request.json`；绝不直接写最终文件。Unity 会将其原子 move 为 `processing.json`，再以 `response.json.tmp` → `response.json` 发布结果。
+3. **全新且一致的 id**：id 只存在于 JSON envelope。每次请求使用从未用过的非空字符串，最长 64 字符；响应 JSON 的 id 必须与请求一致。
+4. **先发现**：每个 session 第一条请求必须是 `list_commands`，并缓存 command set 与 `commandsVersion`。
+5. **按版本刷新**：仅当响应版本变化、装卸/启停扩展或收到 `UNKNOWN_COMMAND` 时重新执行 `list_commands`。
 
-> 包开发 / 写扩展命令见 `README.md`;本文档只讲**怎么驱动**。
+## 1. 定位 Bridge root
 
-## 铁律(每次驱动都必须遵守)
+从当前目录及父级寻找同时包含 `Assets/` 与 `.agentbridge/` 的 Unity 工程；必要时再扫描子目录。Bridge root 是 `<project>/.agentbridge/`。协议直接使用以下固定槽位：
 
-这五条是硬性契约,任何一条违反都会导致请求丢失、被读半截、或命令集不同步。开始前请记牢——落到每条命令上的**具体执行步骤**见第 7 节「每让 Unity 做一件事,严格按此 5 步」:
-
-1. **原子写请求** —— 永远先写 `requests/{id}.request.json.tmp`,再 rename 成 `requests/{id}.request.json`。**绝不直接写最终名**(会被 Unity 读到半截)。
-2. **id 唯一且四处一致** —— `{id}` 由你生成,**每条请求全新、绝不复用**(即便重试也换新 id);请求文件名、请求 JSON 的 `id`、响应文件名、响应 JSON 的 `id` 必须完全一致。建议使用跨平台安全格式:`[A-Za-z0-9][A-Za-z0-9_-]{0,63}`。
-3. **发一条、等一条、读完再发下一条** —— 不要并发堆多条请求;若 `requests/` 同时存在多条最终请求,Unity 只认领最新一条并删除其它请求(不会给旧请求写响应)。下一条请求会被视为“上一响应已读”的确认,Unity 会在认领它之前清掉上一轮通讯文件。
-4. **启动只调一次 `list_commands` 并记住结果** —— 命令清单不在文档里写死,必须运行时发现;调一次、缓存清单 + `commandsVersion`,之后**一直用缓存,不要重复调**。
-5. **仅当命令集变了才刷新** —— 只有响应的 `commandsVersion` 与缓存不一致、装/卸/启停扩展后、或收到 `UNKNOWN_COMMAND` 时,才重调一次 `list_commands`;其余时候不重调。
-
-> ⚠️ Unity 编辑器**失焦时默认不轮询**(你写了请求也不会被处理)。若需失焦也驱动:在 Unity 开 `Window/Agent Bridge`,勾顶部「失焦不节流」。
-
----
-
-## 1. 通讯方式
-
-Agent ↔ Unity 通过**文件**通讯,无网络。先定位 Unity 工程目录 `<project>`:从当前工作目录出发,检查当前目录及父级,必要时再扫描子目录,寻找**同一目录内同时存在 `Assets/` 与 `.agentbridge/`** 的目录(二者必须同级)。找到后根目录 `<root>` 就是 `<project>/.agentbridge/`;如果找不到,停止并提示“Unity 没有安装或运行 AgentBridge”,不要自己创建 `.agentbridge/`:
-
-```
-<root>/
-├── requests/    你写 {id}.request.json
-├── processing/  Unity 认领中(勿动)
-└── responses/   Unity 写 {id}.response.json(你读)
+```text
+.agentbridge/
+├── request.json.tmp    Agent 写入的临时文件
+├── request.json        Agent 原子发布的请求
+├── processing.json     Unity 已 claim 的请求；Agent 不得操作
+├── response.json.tmp   Unity 写入的临时文件
+└── response.json       Unity 原子发布的响应；Agent 等待 claim 清理后删除
 ```
 
-一次驱动只碰两个目录:**写** `requests/`、**读** `responses/`。`processing/` 是 Unity 的认领区,你不要碰。
+这些文件是临时状态，空闲时不需要存在；定位时只要求 Unity 工程和已存在的 `.agentbridge/`。找不到 Bridge root 时停止并报告“Unity 没有安装或运行 AgentBridge”。不要自行创建或猜测 Bridge root。固定槽位协议不兼容任何旧布局。Unity 失焦时默认可能停止轮询；需要后台驱动时在 `Window/Agent Bridge` 启用失焦不节流。
 
-## 2. 发一条命令
+## 2. 发现 command set
 
-1. **原子写请求**(铁律 1):先写 `requests/{id}.request.json.tmp`,再 rename 成 `requests/{id}.request.json`。
-2. **轮询响应**:读 `responses/{id}.response.json`,**文件出现即为完成**(Unity 也用 tmp→rename 原子写,不会读到半截)。
-3. **读完不必删** —— 当前响应会保留供你读取;你发出下一条请求后,Unity 会在认领新请求前清掉上一响应。
+定位成功后只调用一次 `list_commands`，缓存：
 
-> 清理机制:Unity 只选择 `requests/` 中最新的最终 `.request.json`;认领前删除其它最终请求、请求临时文件和上一轮响应。请求原子移动到 `processing/` 后才会执行;当前响应通过临时文件原子发布,随后删除 `processing/` 请求。正常空闲时三个目录中只保留**当前这一份响应**;它必须留到下一条请求出现,因为没有额外 ACK 时 Unity 无法提前判断 Agent 是否已经读完。单独存在、尚未 rename 的 `.request.json.tmp` 会被忽略,避免 Unity 读到半截内容。
+- 每个 command 的 `paramsSchema`、`batchAllowed` 与 `supportsUndoCollapse`；
+- 顶层 `commandsVersion`。
 
-**请求** `{id}.request.json`:
-```json
-{ "v": 1, "id": "x1", "command": "ping", "params": {} }
-```
+后续请求必须先在缓存中查 command 和 schema。不要凭文档、源码文件名或记忆拼参数。
 
-**响应** `{id}.response.json`:
-```json
-{ "v": 1, "id": "x1", "status": "ok",
-  "result": { "message": "pong", "unityVersion": "6000.3.12f1" },
-  "error": null, "commandsVersion": "1c5bb3655cdf454c", "timestamp": "2026-06-25T10:00:00.1Z" }
-```
+## 3. 完成一次 exchange
 
-字段:
-- `id`:必须显式提供,并与请求文件名中的 `{id}` 完全一致——**用它对上号**,别用文件顺序判断。缺失、空值、大小写不同都不会执行命令。
-- `status`:`"ok"` | `"error"`。`ok` 时 `error=null`;`error` 时 `result=null`。
-- `result`:命令结果(`ok` 时)。
-- `error`:`{ "code": string, "message": string }`(`error` 时)。
-- `commandsVersion`:命令集内容 hash,**每条响应都有**——每次读到都拿它对照缓存(铁律 5)。
+1. 从缓存读取 command 的 `paramsSchema` 并构造 object 类型的 `params`。
+2. 生成全新 id。
+3. 确认不存在上一轮未确认的 `response.json`；写入 `request.json.tmp`，随后在 Bridge root 内原子 rename 为 `request.json`。
+4. 轮询固定的 `response.json`；约每秒一次，通常最多等待 30 秒。
+5. 文件出现后一次性完整读入内存，核对响应 id，处理 `status/result/error`，并比较 `commandsVersion`。
+6. 完整读取后等待 Unity 删除 `processing.json`；等待期间必须保留 `response.json`。
+7. `processing.json` 消失后，显式删除 `response.json` 作为 ack。删除成功后才可开始下一次 exchange。
 
-## 3. 错误码
+这个顺序是协议不变量：如果 Agent 在 claim 清理前删除响应，恰好发生 domain reload 时，Unity 无法区分“响应已经发布”与“命令在响应前中断”，可能把已完成命令误报为 `INTERRUPTED`。
 
-| code | 含义 | 你该怎么做 |
-|---|---|---|
-| `UNKNOWN_COMMAND` | command 未注册(命令集可能变了) | 重调 `list_commands` 刷新缓存,再重试 |
-| `INVALID_PARAMS` | params 缺字段 / 类型错 | 对照 `paramsSchema` 修正参数后重发 |
-| `INVALID_REQUEST` | 请求信封违约(JSON 格式错误,或缺少/传错 `v`、`id`、`command`) | 修正请求 JSON,换新 id 后重发;不要复用原 id |
-| `HANDLER_EXCEPTION` | 命令执行抛异常(message 带堆栈摘要) | 读 message 定位;非临时问题别盲目重试 |
-| `INTERRUPTED` | 请求已认领,但在响应提交前遇到编辑器重编译(domain reload)或写入失败;命令是否已完成未知 | 确认副作用后,换新 id 决定是否重发 |
-| `INTERNAL_ERROR` | 框架内部错误 | 读 message 定位桥接实现问题;不要盲目重试 |
-| `CONSOLE_UNAVAILABLE` | 命令需访问 Console 但内部 API 反射失败(版本不兼容) | 该命令在当前 Unity 版本不可用,换别的方式 |
-
-handler 也可返回自有错误码(如 `MENU_NOT_FOUND`),含义见该命令 `description`。
-
-## 4. 发现可用命令(务必先做)
-
-命令清单**不写死在文档里**——它随代码 / 装的扩展变。用 `list_commands` 运行时获取:
+请求与响应：
 
 ```json
-// 请求 command="list_commands"
-// 响应 result:
-{ "commands": [
-    { "command": "ping", "description": "连通性测试,返回 pong 与 Unity 版本", "paramsSchema": null },
-    { "command": "search_logs", 
-      "description": "搜索编辑器 Console 当前日志条目:query(子串,regex=true 则正则)/type(error|warning|log)/ignoreCase/limit;返回 {total,matched,truncated,entries:[{message,type,file,line}]}", 
-      "paramsSchema": { "type": "object", "properties": { "query": { "type": "string" }, "regex": { "type": "boolean" }, "ignoreCase": { "type": "boolean" }, "type": { "type": "string", "enum": ["error","warning","log"] }, "limit": { "type": "integer" } } } }
-  ],
-  "commandsVersion": "1c5bb3655cdf454c" }
-```
-每条 `{ command, description, paramsSchema }`;`paramsSchema` 是该命令参数的 JSON Schema(命令未声明参数则为 null)。**发任何命令前,先从缓存里查它的 schema 拼参数。**
-
-**缓存与刷新规矩**(即铁律 4、5):
-- **启动时调一次 `list_commands`**,缓存命令清单 + `commandsVersion`,**整个 session 一直用这份缓存**。
-- 这是**唯一常规的一次调用**——之后每条命令都从缓存查 `paramsSchema`,**绝不因为"要发下一条命令"就重调**。
-- 只有命令集**确实变了**才重调一次(属例外,平时不会发生),触发条件三选一:
-  1. 任意响应的 `commandsVersion` 与你缓存的不一致(命令集变了);
-  2. 装 / 卸 / 启停了扩展;
-  3. 某命令返回 `UNKNOWN_COMMAND`(缓存过期 → 刷新后重试)。
-
-`commandsVersion` 是内容 hash:同一命令集恒定(跨编辑器重启稳定),增删/改命令即变。
-
-## 5. 驱动流程一图
-
-```
-读本文档(记牢铁律)
-  → 启动:list_commands → 缓存 命令清单 + commandsVersion
-  → 循环每条命令:
-      查缓存拿 schema 拼参数
-      → 写请求(.tmp → rename 到 requests/)
-      → 轮询读 responses/{id}.response.json(按 id 对号)
-      → 读响应.commandsVersion:
-            == 缓存? → 处理 result / 继续下一条
-            != 缓存? → 重新 list_commands 刷新,再继续
-      → 遇 UNKNOWN_COMMAND → 重新 list_commands 后换新 id 重试
+{ "v": 1, "id": "req-8f3a", "command": "ping", "params": {} }
 ```
 
-## 6. 写一个新命令
+```json
+{
+  "v": 1,
+  "id": "req-8f3a",
+  "status": "ok",
+  "result": { "message": "pong" },
+  "error": null,
+  "commandsVersion": "1c5bb3655cdf454c",
+  "timestamp": "2026-06-25T10:00:00.100Z"
+}
+```
 
-写一个 `ICommandHandler` 实现类放进被编译的程序集即自动注册(无需特性)。六个成员:`Command` 命令名(唯一)、`Description` 描述(供 `list_commands`)、`Group` 功能分组(管理器窗口按它分组)、`CanDisable` 能否被禁用(`false` 则锁定常开,如 ping / list_commands)、`Execute` 执行、`GetParamsSchema()` 参数 schema(无参返回空 `{}`,即 `new JObject()`)。详见 `README.md` 的「扩展」一节。
+请求与响应的固定上限均为 1 MiB，`params` 必须是 object。id 必须是非空字符串且最长 64 字符。JSON 无法解析，或 id 缺失、类型错误、超长时，`INVALID_REQUEST` 响应使用空 id；固定的 `response.json` 槽位仍能关联当前 exchange。响应超限时返回紧凑的 `RESPONSE_TOO_LARGE`，应缩小查询范围并换新 id。
 
----
+## 4. 错误恢复
+
+| code | 处理 |
+|---|---|
+| `INVALID_REQUEST` | 修正 envelope 或 id，换新 id 重发 |
+| `INVALID_PARAMS` | 按缓存 schema 修正 params，换新 id 重发 |
+| `UNKNOWN_COMMAND` | 刷新 command set，再换新 id 决定是否重发 |
+| `COMMAND_DISABLED` | 不要绕过禁用状态；让用户在命令管理器启用 |
+| `HANDLER_EXCEPTION` | 根据 message 定位 implementation；不要盲目重试 |
+| `INTERRUPTED` | 副作用状态未知；先检查实际状态，再决定是否用新 id 重试 |
+| `RESPONSE_TOO_LARGE` | 缩小 root、depth、limit 等范围后换新 id |
+| `INTERNAL_ERROR` | Bridge framework 失败；报告 message |
+
+command 可以返回额外领域错误码；其含义由 command description 和结果上下文决定。
+
+## 5. 可往返引用与状态令牌
+
+- Object reference 和 Component reference 应原样回传，不要手拼。Object path 使用 `~0` 表示 `~`、`~1` 表示 `/`、`~2` 表示空名称。
+- `exactType=true` 的 Component reference 按精确 runtime type 计算 index；缺少该字段的旧 reference 保持兼容语义。
+- `set_game_view_resolution` 返回的 `restore` 是一次性状态令牌；完成截图或验证后应原样回传以恢复原选择并删除临时尺寸。
+- `batch` 会先预检全部 child command，再顺序执行；它不是事务，运行期失败不会回滚已经完成的 child command。
+
+## 6. command set 何时失效
+
+每次响应都比较 `commandsVersion`。只有以下情况刷新：
+
+1. 响应版本与缓存不同；
+2. Unity 中装卸或启停了扩展；
+3. 收到 `UNKNOWN_COMMAND`。
+
+其它时候继续使用当前缓存，不要在每条请求前重复 discovery。
 
 ## 7. 复制到你的项目 CLAUDE.md
 
-把下面这段粘进集成方项目的 `CLAUDE.md`,让 AI 一开 session 就知道怎么驱动、且**始终遵守流程**(**只放稳定元知识,不放命令清单**):
+命令管理器会从下面的 markdown code block 安装受管理片段。片段只负责把 Agent 导向本 canonical contract，不复制易漂移的 command metadata。
 
 ```markdown
-## Unity Agent Bridge(驱动 Unity 编辑器)——必读,严格遵守
+## Unity Agent Bridge（驱动 Unity Editor）
 
-本工程接入了 Unity Agent Bridge:**任何需要让 Unity 编辑器做的事**(查场景、改物体、建资源、跑编译……),你(AI)都必须通过"写请求文件 / 读响应文件"来完成,不能凭空假设 Unity 状态,也不能跳过这套流程直接改工程文件。完整协议见 Unity 包内 `AGENT.md`。
+本工程通过 Unity Agent Bridge 驱动编辑器。执行任何 Unity 查询或修改前，必须先阅读已安装包的 `AGENT.md`，并遵守其中的 fixed-slot single-flight exchange、原子请求写入、先等 `processing.json` 消失再删除响应的 ack、唯一 id、session 首次 `list_commands` 和 `commandsVersion` 刷新规则。
 
-`<root>` 为 Unity 工程下**已存在**的 `.agentbridge/`。启动时先定位 Unity 工程目录:从当前工作目录出发,检查当前目录及父级,必要时再扫描子目录,寻找**同一目录内同时存在 `Assets/` 和 `.agentbridge/`** 的目录(即 `Assets` 与 `.agentbridge` 是同级)。找到后 `<root>=<该目录>/.agentbridge/`,且必须包含 `requests/`、`processing/`、`responses/`。如果找不到这样的目录,或 `.agentbridge` 缺少这三个子目录,就停止并明确提示:**Unity 没有安装或运行 AgentBridge**;不要自行创建 `.agentbridge`、不要猜路径。
-
-### 第 0 步(每个 session 开头,只做一次)
-在发任何其它命令**之前**,先发一次 `list_commands`,把返回的命令清单连同 `commandsVersion`、每条的 `paramsSchema` **记在本 session 里**。可用命令不在文档里、也不写死,只能这样运行时发现。**没做过第 0 步就发别的命令 = 错误。** 之后一直用这份缓存,不要重复调 `list_commands`(何时才需重调见文末)。
-
-### 每让 Unity 做一件事,严格按此 5 步(不可跳步、不可合并、不可并发)
-1. **取 schema**:从缓存里找到该命令,按它的 `paramsSchema` 拼 `params`(命令不存在 → 先做"重新发现",别猜)。
-2. **起唯一 id**:为这条请求生成一个**全新、从未用过**的 `id`(哪怕是重试,也换新 id);建议格式:`[A-Za-z0-9][A-Za-z0-9_-]{0,63}`。
-3. **原子写**:请求 JSON 的 `id` 必须与文件名 `{id}` 完全一致;先写 `<root>/requests/{id}.request.json.tmp`,**再改名**成 `<root>/requests/{id}.request.json`。**绝不能直接写最终名**(会被读到半截)。
-   - Windows:`Move-Item -Force {id}.request.json.tmp {id}.request.json`
-   - macOS/Linux:`mv {id}.request.json.tmp {id}.request.json`
-4. **等这一条的响应**:反复读 `<root>/responses/{id}.response.json`,直到该文件出现(约每 1 秒一次,最多等 ~30 秒;超时按失败处理)。**在读到它之前,绝不发下一条命令**——下一条请求是上一响应“已读”的隐式确认;抢发会使上一响应被 Unity 清掉。
-5. **按 id 核对并处理**:确认响应 `id` 与你发的一致;`status=="ok"` 用 `result`,`status=="error"` 看 `error.code`(如 `INVALID_PARAMS` 改参数、`INTERRUPTED` 先确认副作用再换新 id 决定是否重发)。顺便对照响应里的 `commandsVersion`(见文末)。
-
-### 完整示例:让 Unity 执行 ping
-- 生成 id:`req-8f3a`
-- 写 `<root>/requests/req-8f3a.request.json.tmp`,内容:`{"v":1,"id":"req-8f3a","command":"ping","params":{}}`
-- 改名为 `<root>/requests/req-8f3a.request.json`
-- 轮询读 `<root>/responses/req-8f3a.response.json`,直到出现
-- 得到 `{"id":"req-8f3a","status":"ok","result":{"message":"pong",...},"commandsVersion":"..."}` → 成功
-
-### 绝不(违反任一条都会出错)
-- 绝不直接写 `.request.json`(必须先 `.tmp` 再改名)。
-- 绝不复用 `id`。
-- 绝不让请求 JSON 的 `id` 与请求文件名 `{id}` 不一致。
-- 绝不在上一条响应读到之前,发下一条命令。
-- 绝不跳过第 0 步、凭记忆或猜测发命令。
-
-### 何时才重新 `list_commands`(平时都不需要)
-仅当以下之一发生:任意响应的 `commandsVersion` 与你缓存的不一致 / 在 Unity 里装卸或启停了扩展 / 某命令返回 `UNKNOWN_COMMAND`。这时重发一次 `list_commands` 刷新缓存,再继续。
-
-（可选)Unity 失焦时默认不轮询;若需失焦也驱动,在 Unity 开 `Window/Agent Bridge` 勾顶部「失焦不节流」。
+先寻找 `Assets/` 与已存在 `.agentbridge/` 同级的 Unity 工程；Bridge root 直接使用固定的 `request.json`、`processing.json`、`response.json` 槽位，空闲时这些文件可以不存在。找不到 Bridge root 时停止并报告 Unity 没有安装或运行 AgentBridge，不得自行创建目录。实际 command、params schema 和 batch policy 只从运行时 `list_commands` 获取，不得使用硬编码清单。
 ```

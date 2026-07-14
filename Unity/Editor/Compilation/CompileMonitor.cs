@@ -32,7 +32,12 @@ namespace AgentBridge
             }
             try
             {
-                return JsonConvert.DeserializeObject<CompileResult>(json) ?? new CompileResult();
+                var result = JsonConvert.DeserializeObject<CompileResult>(json) ?? new CompileResult();
+                if (result.Messages == null)
+                {
+                    result.Messages = new System.Collections.Generic.List<CompileMessage>();
+                }
+                return result;
             }
             catch
             {
@@ -58,9 +63,56 @@ namespace AgentBridge
             SessionState.SetString(StateKey, JsonConvert.SerializeObject(result));
         }
 
+        /// <summary>
+        /// 在 RequestScriptCompilation 前建立新 generation,消除“请求后事件前”仍显示旧结果的窗口。
+        /// </summary>
+        public static CompileResult MarkRequested()
+        {
+            var previous = Read();
+            var result = new CompileResult
+            {
+                Compiling = true,
+                Generation = previous.Generation + 1,
+                RequestedAt = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
+                CompiledAt = null,
+                RequestFailed = false,
+                RequestError = null
+            };
+            Write(result);
+            return result;
+        }
+
+        public static void MarkRequestFailed(int generation, string error)
+        {
+            var result = Read();
+            if (result.Generation != generation)
+            {
+                return;
+            }
+            result.Compiling = false;
+            result.CompiledAt = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
+            result.RequestFailed = true;
+            result.RequestError = error;
+            Write(result);
+        }
+
         private static void OnCompilationStarted(object context)
         {
-            Write(new CompileResult { Compiling = true, CompiledAt = null });
+            var result = Read();
+            if (!result.Compiling)
+            {
+                result = new CompileResult
+                {
+                    Generation = result.Generation + 1,
+                    RequestedAt = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                };
+            }
+            result.Compiling = true;
+            result.CompiledAt = null;
+            result.RequestFailed = false;
+            result.RequestError = null;
+            result.Messages.Clear();
+            Write(result);
         }
 
         private static void OnAssemblyCompilationFinished(string assemblyPath, CompilerMessage[] messages)

@@ -24,6 +24,7 @@ namespace AgentBridge
         private static PropertyInfo s_GameViewSizesInstance;
         private static MethodInfo s_GetGroup;
         private static MethodInfo s_AddCustomSize;
+        private static MethodInfo s_RemoveCustomSize;
         private static MethodInfo s_GetBuiltinCount;
         private static MethodInfo s_GetCustomCount;
         private static MethodInfo s_GetGameViewSize;
@@ -39,7 +40,14 @@ namespace AgentBridge
 
         public readonly struct Result
         {
-            public Result(int width, int height, string label, int selectedIndex, bool created, string group)
+            public Result(
+                int width,
+                int height,
+                string label,
+                int selectedIndex,
+                bool created,
+                string group,
+                RestoreToken restore)
             {
                 Width = width;
                 Height = height;
@@ -47,6 +55,7 @@ namespace AgentBridge
                 SelectedIndex = selectedIndex;
                 Created = created;
                 Group = group;
+                Restore = restore;
             }
 
             public int Width { get; }
@@ -54,6 +63,59 @@ namespace AgentBridge
             public string Label { get; }
             public int SelectedIndex { get; }
             public bool Created { get; }
+            public string Group { get; }
+            public RestoreToken Restore { get; }
+        }
+
+        public readonly struct RestoreToken
+        {
+            public RestoreToken(
+                int selectedIndex,
+                bool removeCreated,
+                int width,
+                int height,
+                string label,
+                string group)
+            {
+                SelectedIndex = selectedIndex;
+                RemoveCreated = removeCreated;
+                Width = width;
+                Height = height;
+                Label = label;
+                Group = group;
+            }
+
+            public int SelectedIndex { get; }
+            public bool RemoveCreated { get; }
+            public int Width { get; }
+            public int Height { get; }
+            public string Label { get; }
+            public string Group { get; }
+        }
+
+        public readonly struct RestoreResult
+        {
+            public RestoreResult(
+                int selectedIndex,
+                int width,
+                int height,
+                string label,
+                bool removedCreated,
+                string group)
+            {
+                SelectedIndex = selectedIndex;
+                Width = width;
+                Height = height;
+                Label = label;
+                RemovedCreated = removedCreated;
+                Group = group;
+            }
+
+            public int SelectedIndex { get; }
+            public int Width { get; }
+            public int Height { get; }
+            public string Label { get; }
+            public bool RemovedCreated { get; }
             public string Group { get; }
         }
 
@@ -80,17 +142,26 @@ namespace AgentBridge
                     "无法访问编辑器 Game View 分辨率 API(内部类型或成员反射失败,可能是 Unity 版本不兼容)。");
             }
 
+            object rollbackSizes = null;
+            object rollbackGroup = null;
+            EditorWindow rollbackGameView = null;
+            var rollbackSelectedIndex = -1;
+            var rollbackCustomIndex = -1;
             try
             {
                 var sizes = s_GameViewSizesInstance.GetValue(null, null);
+                rollbackSizes = sizes;
                 if (sizes == null)
                 {
                     throw new CommandException(UnavailableError, "无法访问 GameViewSizes.instance。");
                 }
 
                 var gameView = GetGameView();
-                var groupType = s_GameViewCurrentSizeGroupType.GetValue(gameView, null);
+                rollbackGameView = gameView;
+                rollbackSelectedIndex = Convert.ToInt32(s_SelectedSizeIndex.GetValue(gameView, null));
+                var groupType = GetCurrentSizeGroupType(gameView);
                 var group = s_GetGroup.Invoke(sizes, new[] { groupType });
+                rollbackGroup = group;
                 if (group == null)
                 {
                     throw new CommandException(UnavailableError, "无法访问当前 Game View 尺寸组。");
@@ -100,6 +171,9 @@ namespace AgentBridge
                 var created = false;
                 if (index < 0)
                 {
+                    // RemoveCustomSize expects an index inside the custom-size list, not the
+                    // combined built-in + custom selectedSizeIndex.
+                    rollbackCustomIndex = CustomSizeCount(group);
                     var size = s_GameViewSizeConstructor.Invoke(new[] { s_FixedResolutionValue, width, height, label });
                     s_AddCustomSize.Invoke(group, new[] { size });
                     s_SaveToHDD.Invoke(sizes, null);
@@ -129,18 +203,37 @@ namespace AgentBridge
                         $"设置 Game View 分辨率后验证失败:当前为 {selectedInfo.Width}x{selectedInfo.Height}。");
                 }
 
-                return new Result(width, height, selectedInfo.Label, selectedIndex, created, groupType.ToString());
+                return new Result(
+                    width,
+                    height,
+                    selectedInfo.Label,
+                    selectedIndex,
+                    created,
+                    groupType.ToString(),
+                    new RestoreToken(
+                        rollbackSelectedIndex,
+                        created,
+                        width,
+                        height,
+                        selectedInfo.Label,
+                        groupType.ToString()));
             }
             catch (CommandException)
             {
+                RollbackSelectionAndCustomSize(rollbackGameView, rollbackSelectedIndex,
+                    rollbackSizes, rollbackGroup, rollbackCustomIndex);
                 throw;
             }
             catch (TargetInvocationException ex)
             {
+                RollbackSelectionAndCustomSize(rollbackGameView, rollbackSelectedIndex,
+                    rollbackSizes, rollbackGroup, rollbackCustomIndex);
                 throw new CommandException(FailedError, "设置 Game View 分辨率失败: " + (ex.InnerException?.Message ?? ex.Message));
             }
             catch (Exception ex)
             {
+                RollbackSelectionAndCustomSize(rollbackGameView, rollbackSelectedIndex,
+                    rollbackSizes, rollbackGroup, rollbackCustomIndex);
                 throw new CommandException(FailedError, "设置 Game View 分辨率失败: " + ex.Message);
             }
         }
@@ -175,11 +268,16 @@ namespace AgentBridge
             s_GetGroup = s_GameViewSizesType.GetMethod("GetGroup", InstanceFlags, null, new[] { s_GameViewSizeGroupTypeEnum }, null);
             s_SaveToHDD = s_GameViewSizesType.GetMethod("SaveToHDD", InstanceFlags);
             s_AddCustomSize = s_GameViewSizeGroupType.GetMethod("AddCustomSize", InstanceFlags, null, new[] { s_GameViewSizeType }, null);
+            s_RemoveCustomSize = s_GameViewSizeGroupType.GetMethod("RemoveCustomSize", InstanceFlags, null, new[] { typeof(int) }, null);
             s_GetBuiltinCount = s_GameViewSizeGroupType.GetMethod("GetBuiltinCount", InstanceFlags);
             s_GetCustomCount = s_GameViewSizeGroupType.GetMethod("GetCustomCount", InstanceFlags);
             s_GetGameViewSize = s_GameViewSizeGroupType.GetMethod("GetGameViewSize", InstanceFlags, null, new[] { typeof(int) }, null);
             s_SelectedSizeIndex = s_GameViewType.GetProperty("selectedSizeIndex", InstanceFlags);
-            s_GameViewCurrentSizeGroupType = s_GameViewType.GetProperty("currentSizeGroupType", InstanceFlags);
+            // Unity 6000.2+ changed currentSizeGroupType from an instance property to a
+            // static property. Support both shapes so 2021.3 through Unity 6 remain valid.
+            s_GameViewCurrentSizeGroupType =
+                s_GameViewType.GetProperty("currentSizeGroupType", InstanceFlags) ??
+                s_GameViewType.GetProperty("currentSizeGroupType", StaticFlags);
             s_GameViewSizeConstructor = s_GameViewSizeType.GetConstructor(InstanceFlags, null,
                 new[] { s_GameViewSizeTypeEnum, typeof(int), typeof(int), typeof(string) }, null);
 
@@ -189,7 +287,7 @@ namespace AgentBridge
             s_BaseTextProperty = s_GameViewSizeType.GetProperty("baseText", InstanceFlags);
             s_FixedResolutionValue = Enum.Parse(s_GameViewSizeTypeEnum, "FixedResolution");
 
-            if (s_GameViewSizesInstance == null || s_GetGroup == null || s_AddCustomSize == null ||
+            if (s_GameViewSizesInstance == null || s_GetGroup == null || s_AddCustomSize == null || s_RemoveCustomSize == null ||
                 s_SaveToHDD == null ||
                 s_GetBuiltinCount == null || s_GetCustomCount == null || s_GetGameViewSize == null ||
                 s_SelectedSizeIndex == null || s_GameViewCurrentSizeGroupType == null ||
@@ -201,6 +299,116 @@ namespace AgentBridge
             }
 
             return true;
+        }
+
+        private static void RollbackSelectionAndCustomSize(
+            EditorWindow gameView,
+            int selectedIndex,
+            object sizes,
+            object group,
+            int customIndex)
+        {
+            try
+            {
+                if (gameView != null && selectedIndex >= 0 && s_SelectedSizeIndex != null)
+                {
+                    s_SelectedSizeIndex.SetValue(gameView, selectedIndex, null);
+                    gameView.Repaint();
+                }
+                if (sizes != null && group != null && customIndex >= 0 && s_RemoveCustomSize != null)
+                {
+                    s_RemoveCustomSize.Invoke(group, new object[] { customIndex });
+                    s_SaveToHDD?.Invoke(sizes, null);
+                }
+            }
+            catch (Exception)
+            {
+                // Preserve the original command failure. A detailed compatibility error is
+                // more actionable than replacing it with a cleanup exception.
+            }
+        }
+
+        public static RestoreResult RestoreFixedResolution(RestoreToken token)
+        {
+            if (Application.isBatchMode)
+            {
+                throw new CommandException(UnavailableError, "BatchMode 下无法访问 Game View。");
+            }
+            try
+            {
+                if (!EnsureReflection())
+                {
+                    throw new CommandException(UnavailableError,
+                        "无法访问编辑器 Game View 分辨率 API(内部类型或成员反射失败,可能是 Unity 版本不兼容)。");
+                }
+
+                var sizes = s_GameViewSizesInstance.GetValue(null, null);
+                var gameView = GetGameView();
+                var groupType = GetCurrentSizeGroupType(gameView);
+                var groupName = groupType.ToString();
+                if (!string.Equals(groupName, token.Group, StringComparison.Ordinal))
+                {
+                    throw new CommandException(FailedError,
+                        $"Game View 尺寸组已从 {token.Group} 切换为 {groupName},拒绝使用过期 restore token。");
+                }
+                var group = s_GetGroup.Invoke(sizes, new[] { groupType });
+                var sizeCount = SizeCount(group);
+                if (token.SelectedIndex < 0 || token.SelectedIndex >= sizeCount)
+                {
+                    throw new CommandException(FailedError,
+                        $"restore selectedIndex={token.SelectedIndex} 超出当前范围 0..{Math.Max(0, sizeCount - 1)}。");
+                }
+
+                s_SelectedSizeIndex.SetValue(gameView, token.SelectedIndex, null);
+                var removedCreated = false;
+                if (token.RemoveCreated)
+                {
+                    var customIndex = FindCustomSize(
+                        group, token.Width, token.Height, token.Label);
+                    if (customIndex >= 0)
+                    {
+                        s_RemoveCustomSize.Invoke(group, new object[] { customIndex });
+                        s_SaveToHDD.Invoke(sizes, null);
+                        removedCreated = true;
+                    }
+                }
+
+                gameView.Repaint();
+                EditorApplication.QueuePlayerLoopUpdate();
+                var restoredIndex = Convert.ToInt32(s_SelectedSizeIndex.GetValue(gameView, null));
+                if (restoredIndex != token.SelectedIndex)
+                {
+                    throw new CommandException(FailedError,
+                        $"恢复 Game View 选择失败:selectedSizeIndex={restoredIndex},期望 {token.SelectedIndex}。");
+                }
+                var restored = ReadSize(GetSize(group, restoredIndex));
+                return new RestoreResult(
+                    restoredIndex,
+                    restored.Width,
+                    restored.Height,
+                    restored.Label,
+                    removedCreated,
+                    groupName);
+            }
+            catch (CommandException)
+            {
+                throw;
+            }
+            catch (TargetInvocationException ex)
+            {
+                throw new CommandException(FailedError,
+                    "恢复 Game View 分辨率失败: " + (ex.InnerException?.Message ?? ex.Message));
+            }
+            catch (Exception ex)
+            {
+                throw new CommandException(FailedError, "恢复 Game View 分辨率失败: " + ex.Message);
+            }
+        }
+
+        private static object GetCurrentSizeGroupType(EditorWindow gameView)
+        {
+            var getter = s_GameViewCurrentSizeGroupType.GetGetMethod(true);
+            return s_GameViewCurrentSizeGroupType.GetValue(getter != null && getter.IsStatic ? null : gameView, null);
         }
 
         private static EditorWindow GetGameView()
@@ -226,11 +434,36 @@ namespace AgentBridge
             return -1;
         }
 
+        private static int FindCustomSize(
+            object group,
+            int width,
+            int height,
+            string label)
+        {
+            var builtinCount = Convert.ToInt32(s_GetBuiltinCount.Invoke(group, null));
+            var customCount = CustomSizeCount(group);
+            for (var customIndex = 0; customIndex < customCount; customIndex++)
+            {
+                var info = ReadSize(GetSize(group, builtinCount + customIndex));
+                if (info.IsFixedResolution && info.Width == width && info.Height == height &&
+                    string.Equals(info.Label, label, StringComparison.Ordinal))
+                {
+                    return customIndex;
+                }
+            }
+            return -1;
+        }
+
         private static int SizeCount(object group)
         {
             var builtin = Convert.ToInt32(s_GetBuiltinCount.Invoke(group, null));
-            var custom = Convert.ToInt32(s_GetCustomCount.Invoke(group, null));
+            var custom = CustomSizeCount(group);
             return builtin + custom;
+        }
+
+        private static int CustomSizeCount(object group)
+        {
+            return Convert.ToInt32(s_GetCustomCount.Invoke(group, null));
         }
 
         private static object GetSize(object group, int index)

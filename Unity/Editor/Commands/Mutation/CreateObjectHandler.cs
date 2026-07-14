@@ -14,17 +14,19 @@ namespace AgentBridge
     public sealed class CreateObjectHandler : ICommandHandler
     {
         public string Command => "create_object";
-        public string Description => "创建 GameObject;可选 name/parent 和本地 position/rotation/scale/active,返回新对象 ObjectRef";
+        public string Description => "创建 GameObject;EditMode 记录 Undo/标 dirty,PlayMode 修改运行时副本并返回 persistent=false";
         public string Group => "Mutation";
         public bool CanDisable => true;
+        public CommandBatchMode BatchMode => CommandBatchMode.AllowedWithUndoCollapse;
 
         public object Execute(JObject @params)
         {
+            var persistent = ObjectMutationSupport.RequireStableState(Command);
             var kind = (@params?["kind"]?.Value<string>() ?? "empty").ToLowerInvariant();
             var name = @params?["name"]?.Value<string>();
-            var position = ReadVector3(@params?["position"], "position");
-            var rotation = ReadVector3(@params?["rotation"], "rotation");
-            var scale = ReadVector3(@params?["scale"], "scale");
+            var position = ObjectMutationSupport.ReadVector3(@params?["position"], "position");
+            var rotation = ObjectMutationSupport.ReadVector3(@params?["rotation"], "rotation");
+            var scale = ObjectMutationSupport.ReadVector3(@params?["scale"], "scale");
             var active = ReadOptionalBool(@params?["active"], "active");
 
             GameObject parent = null;
@@ -43,9 +45,11 @@ namespace AgentBridge
 
                 case "primitive":
                     var primName = @params?["primitive"]?.Value<string>();
-                    if (string.IsNullOrEmpty(primName) || !Enum.TryParse<PrimitiveType>(primName, true, out var prim))
+                    if (string.IsNullOrEmpty(primName) ||
+                        !Enum.TryParse<PrimitiveType>(primName, true, out var prim) ||
+                        !Enum.IsDefined(typeof(PrimitiveType), prim))
                     {
-                        throw new CommandException(MutationErrorCodes.CreateFailed,
+                        throw new CommandException(ErrorCodes.InvalidParams,
                             $"未知图元类型 '{primName}'(应为 Cube/Sphere/Capsule/Cylinder/Plane/Quad)");
                     }
                     go = GameObject.CreatePrimitive(prim);
@@ -59,7 +63,7 @@ namespace AgentBridge
                     var prefabPath = @params?["prefabPath"]?.Value<string>();
                     if (string.IsNullOrEmpty(prefabPath))
                     {
-                        throw new CommandException(MutationErrorCodes.CreateFailed, "kind=prefab 需 prefabPath");
+                        throw new CommandException(ErrorCodes.InvalidParams, "kind=prefab 需 prefabPath");
                     }
                     var asset = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
                     if (asset == null)
@@ -78,32 +82,48 @@ namespace AgentBridge
                     break;
 
                 default:
-                    throw new CommandException(MutationErrorCodes.CreateFailed,
+                    throw new CommandException(ErrorCodes.InvalidParams,
                         $"未知 kind '{kind}'(应为 empty/primitive/prefab)");
             }
 
-            // 先设父级(随之进入父级所在场景),再注册创建撤销 → 一条命令一条撤销,undo 删除整个新对象。
-            if (parent != null)
+            var undoRegistered = false;
+            try
             {
-                go.transform.SetParent(parent.transform, true);
+                using (var mutation = ObjectMutationSupport.BeginUndo(Command, persistent))
+                {
+                    // 先登记新对象，再执行后续初始化；任何异常都会撤销整个创建。
+                    if (persistent)
+                    {
+                        Undo.RegisterCreatedObjectUndo(go, mutation.Name);
+                        undoRegistered = true;
+                    }
+                    if (parent != null)
+                    {
+                        go.transform.SetParent(parent.transform, true);
+                    }
+                    ApplyInitialState(go, position, rotation, scale, active);
+                    if (persistent)
+                    {
+                        PrefabUtility.RecordPrefabInstancePropertyModifications(go);
+                        PrefabUtility.RecordPrefabInstancePropertyModifications(go.transform);
+                    }
+                    ObjectMutationSupport.MarkSceneDirty(go, persistent);
+                    mutation.Complete();
+                }
             }
-            ApplyInitialState(go, position, rotation, scale, active);
-            Undo.RegisterCreatedObjectUndo(go, "AgentBridge create_object");
-
-            if (go.scene.IsValid())
+            catch
             {
-                UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(go.scene);
+                if ((!persistent || !undoRegistered) && go != null)
+                {
+                    UnityEngine.Object.DestroyImmediate(go);
+                }
+                throw;
             }
 
             return new
             {
-                @object = new
-                {
-                    name = go.name,
-                    path = SceneObjectResolver.GetPath(go.transform),
-                    instanceId = go.GetInstanceID(),
-                    active = go.activeSelf
-                }
+                @object = SceneObjectResolver.Describe(go),
+                persistent
             };
         }
 
@@ -132,32 +152,6 @@ namespace AgentBridge
             }
         }
 
-        private static Vector3? ReadVector3(JToken token, string name)
-        {
-            if (token == null || token.Type == JTokenType.Null)
-            {
-                return null;
-            }
-            if (token.Type != JTokenType.Object)
-            {
-                throw new CommandException(ErrorCodes.InvalidParams, name + " 必须是包含 x/y/z 的对象");
-            }
-
-            return new Vector3(
-                ReadNumber(token["x"], name + ".x"),
-                ReadNumber(token["y"], name + ".y"),
-                ReadNumber(token["z"], name + ".z"));
-        }
-
-        private static float ReadNumber(JToken token, string name)
-        {
-            if (token == null || (token.Type != JTokenType.Integer && token.Type != JTokenType.Float))
-            {
-                throw new CommandException(ErrorCodes.InvalidParams, name + " 必须是数字");
-            }
-            return token.Value<float>();
-        }
-
         private static bool? ReadOptionalBool(JToken token, string name)
         {
             if (token == null || token.Type == JTokenType.Null)
@@ -171,50 +165,63 @@ namespace AgentBridge
             return token.Value<bool>();
         }
 
-        public JObject GetParamsSchema()
+        public JObject ParamsSchema { get; } = CreateParamsSchema();
+
+        private static JObject CreateParamsSchema()
         {
-            return JObject.Parse(@"{
-  ""type"": ""object"",
-  ""properties"": {
-    ""kind"": { ""type"": ""string"", ""enum"": [""empty"", ""primitive"", ""prefab""], ""default"": ""empty"" },
-    ""primitive"": { ""type"": ""string"", ""description"": ""kind=primitive 时使用,如 Cube/Sphere/Capsule。"" },
-    ""prefabPath"": { ""type"": ""string"", ""description"": ""kind=prefab 时使用的 Assets/ 路径。"" },
-    ""name"": { ""type"": ""string"" },
-    ""parent"": {
-      ""type"": ""object"",
-      ""description"": ""可选父对象;path 或 instanceId 至少提供一个。"",
-      ""properties"": {
-        ""path"": { ""type"": ""string"" },
-        ""instanceId"": { ""type"": ""integer"" }
-      }
-    },
-    ""position"": {
-      ""type"": ""object"",
-      ""description"": ""可选本地坐标。"",
-      ""properties"": {
-        ""x"": { ""type"": ""number"" }, ""y"": { ""type"": ""number"" }, ""z"": { ""type"": ""number"" }
-      },
-      ""required"": [""x"", ""y"", ""z""]
-    },
-    ""rotation"": {
-      ""type"": ""object"",
-      ""description"": ""可选本地欧拉角(度)。"",
-      ""properties"": {
-        ""x"": { ""type"": ""number"" }, ""y"": { ""type"": ""number"" }, ""z"": { ""type"": ""number"" }
-      },
-      ""required"": [""x"", ""y"", ""z""]
-    },
-    ""scale"": {
-      ""type"": ""object"",
-      ""description"": ""可选本地缩放。"",
-      ""properties"": {
-        ""x"": { ""type"": ""number"" }, ""y"": { ""type"": ""number"" }, ""z"": { ""type"": ""number"" }
-      },
-      ""required"": [""x"", ""y"", ""z""]
-    },
-    ""active"": { ""type"": ""boolean"", ""description"": ""可选激活状态。"" }
-  }
-}");
+            var parent = SceneObjectResolver.CreateObjectRefSchema();
+            parent["description"] = "可选父对象;path 或 instanceId 至少提供一个。";
+            return new JObject
+            {
+                ["type"] = "object",
+                ["properties"] = new JObject
+                {
+                    ["kind"] = new JObject
+                    {
+                        ["type"] = "string", ["enum"] = new JArray("empty", "primitive", "prefab"),
+                        ["default"] = "empty"
+                    },
+                    ["primitive"] = new JObject
+                    {
+                        ["type"] = "string", ["description"] = "kind=primitive 时使用,如 Cube/Sphere/Capsule。"
+                    },
+                    ["prefabPath"] = new JObject
+                    {
+                        ["type"] = "string", ["description"] = "kind=prefab 时使用的 Assets/ 路径。"
+                    },
+                    ["name"] = new JObject { ["type"] = "string" },
+                    ["parent"] = parent,
+                    ["position"] = ObjectMutationSupport.Vector3Schema("可选本地坐标。"),
+                    ["rotation"] = ObjectMutationSupport.Vector3Schema("可选本地欧拉角(度)。"),
+                    ["scale"] = ObjectMutationSupport.Vector3Schema("可选本地缩放。"),
+                    ["active"] = new JObject
+                    {
+                        ["type"] = "boolean", ["description"] = "可选激活状态。"
+                    }
+                },
+                ["oneOf"] = new JArray(
+                    new JObject { ["not"] = new JObject { ["required"] = new JArray("kind") } },
+                    KindRequirement("empty"),
+                    KindRequirement("primitive", "primitive"),
+                    KindRequirement("prefab", "prefabPath"))
+            };
+        }
+
+        private static JObject KindRequirement(string kind, params string[] extraRequired)
+        {
+            var required = new JArray("kind");
+            foreach (var field in extraRequired)
+            {
+                required.Add(field);
+            }
+            return new JObject
+            {
+                ["properties"] = new JObject
+                {
+                    ["kind"] = new JObject { ["const"] = kind }
+                },
+                ["required"] = required
+            };
         }
     }
 }

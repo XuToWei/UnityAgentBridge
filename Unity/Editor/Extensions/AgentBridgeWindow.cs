@@ -3,12 +3,13 @@ using System.IO;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
+using RegisteredCommand = AgentBridge.CommandRegistry.RegisteredCommand;
 
 namespace AgentBridge
 {
     /// <summary>
     /// AgentBridge 控制窗口。顶部工具条负责启停桥接、切换失焦节流和刷新命令列表。
-    /// 命令页按 ICommandHandler.Group 分组筛选,并允许逐命令启停;CanDisable=false 的命令会锁定。
+    /// 命令页按 ICommandHandler.Group 分组筛选,并允许逐命令启停;协议必需命令会锁定。
     /// </summary>
     public sealed class AgentBridgeWindow : EditorWindow
     {
@@ -37,7 +38,8 @@ namespace AgentBridge
             public string Label { get; }
         }
 
-        private List<CommandEntry> m_Commands = new List<CommandEntry>();
+        private IReadOnlyList<RegisteredCommand> m_Commands =
+            new RegisteredCommand[0];
         private string m_NameFilter = "";
         private string m_SelectedGroup;   // null = 全部(单选)
         private CommandSortColumn m_CommandSortColumn = CommandSortColumn.Name;
@@ -71,9 +73,13 @@ namespace AgentBridge
             m_CommandsLoaded = false;
         }
 
-        private void Rescan()
+        private void Rescan(bool rebuildRegistry = false)
         {
-            m_Commands = CommandCatalog.All();
+            if (rebuildRegistry)
+            {
+                CommandRegistry.Rebuild();
+            }
+            m_Commands = CommandRegistry.GetRegistrations();
             m_CommandsLoaded = true;
         }
 
@@ -211,7 +217,7 @@ namespace AgentBridge
 
                 if (GUILayout.Button(IconText("Refresh", "刷新"), EditorStyles.toolbarButton, GUILayout.Width(54)))
                 {
-                    Rescan();
+                    Rescan(true);
                 }
 
                 GUILayout.FlexibleSpace();
@@ -246,7 +252,9 @@ namespace AgentBridge
             EditorGUILayout.EndScrollView();
         }
 
-        private void DrawCommandToolbar(List<CommandGroup> groups, List<CommandEntry> visibleCommands)
+        private void DrawCommandToolbar(
+            List<CommandGroup> groups,
+            List<RegisteredCommand> visibleCommands)
         {
             using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))
             {
@@ -278,7 +286,7 @@ namespace AgentBridge
 
                 GUILayout.FlexibleSpace();
                 var visibleCount = visibleCommands.Count;
-                var enabledCount = visibleCommands.Count(c => c.Enabled);
+                var enabledCount = visibleCommands.Count(IsCommandEnabled);
                 EditorGUILayout.LabelField($"显示 {visibleCount} · 启用 {enabledCount}", EditorStyles.miniLabel,
                     GUILayout.Width(130));
             }
@@ -364,7 +372,7 @@ namespace AgentBridge
         }
 
         // 当前显示(经搜索 + 分组筛选)的命令,不含排序。供列表渲染与批量启停。
-        private List<CommandEntry> VisibleCommands(List<CommandGroup> groups)
+        private List<RegisteredCommand> VisibleCommands(List<CommandGroup> groups)
         {
             return (string.IsNullOrEmpty(m_SelectedGroup)
                     ? groups
@@ -375,22 +383,18 @@ namespace AgentBridge
         // 批量启停当前显示的命令(不可禁用的命令由 CommandToggle 自动跳过)。
         private void SetAll(List<CommandGroup> groups, bool enabled)
         {
-            foreach (var cmd in VisibleCommands(groups))
-            {
-                CommandToggle.SetEnabled(cmd.Name, enabled);
-            }
-            Rescan();
+            CommandToggle.SetEnabledBulk(VisibleCommands(groups).Select(cmd => cmd.Command), enabled);
             GUIUtility.ExitGUI();
         }
 
-        private List<CommandEntry> Filtered()
+        private List<RegisteredCommand> Filtered()
         {
-            IEnumerable<CommandEntry> q = m_Commands;
+            IEnumerable<RegisteredCommand> q = m_Commands;
             if (!string.IsNullOrEmpty(m_NameFilter))
             {
                 var f = m_NameFilter.ToLowerInvariant();
-                q = q.Where(c => (c.Name ?? "").ToLowerInvariant().Contains(f)
-                              || (c.Description ?? "").ToLowerInvariant().Contains(f));
+                q = q.Where(c => (c.Command ?? "").ToLowerInvariant().Contains(f)
+                               || (c.Description ?? "").ToLowerInvariant().Contains(f));
             }
             return q.ToList();
         }
@@ -398,32 +402,37 @@ namespace AgentBridge
         private struct CommandGroup
         {
             public string Key;
-            public List<CommandEntry> Commands;
+            public List<RegisteredCommand> Commands;
         }
 
         // 排序:一次只按一个表头列排序,方向统一为升序/降序。
-        private IEnumerable<CommandEntry> SortCommands(IEnumerable<CommandEntry> cmds)
+        private IEnumerable<RegisteredCommand> SortCommands(
+            IEnumerable<RegisteredCommand> cmds)
         {
             switch (m_CommandSortColumn)
             {
                 case CommandSortColumn.Enabled:
                     return m_EnabledSortAscending
-                        ? cmds.OrderBy(c => c.Enabled).ThenBy(c => c.Name)
-                        : cmds.OrderByDescending(c => c.Enabled).ThenBy(c => c.Name);
+                        ? cmds.OrderBy(IsCommandEnabled).ThenBy(c => c.Command)
+                        : cmds.OrderByDescending(IsCommandEnabled).ThenBy(c => c.Command);
                 case CommandSortColumn.Name:
                 default:
                     return m_NameSortAscending
-                        ? cmds.OrderBy(c => c.Name)
-                        : cmds.OrderByDescending(c => c.Name);
+                        ? cmds.OrderBy(c => c.Command)
+                        : cmds.OrderByDescending(c => c.Command);
             }
         }
 
         // 按 ICommandHandler.Group 功能分组(空则归"其它"),按收集到的分组名排列。
-        private static List<CommandGroup> GroupByTag(List<CommandEntry> rows)
+        private static List<CommandGroup> GroupByTag(List<RegisteredCommand> rows)
         {
             return rows.GroupBy(c => string.IsNullOrEmpty(c.Group) ? "其它" : c.Group)
                 .OrderBy(g => g.Key)
-                .Select(g => new CommandGroup { Key = g.Key, Commands = g.OrderBy(c => c.Name).ToList() })
+                .Select(g => new CommandGroup
+                {
+                    Key = g.Key,
+                    Commands = g.OrderBy(c => c.Command).ToList()
+                })
                 .ToList();
         }
 
@@ -466,7 +475,7 @@ namespace AgentBridge
             m_CommandSortColumn = column;
         }
 
-        private void DrawCommandRow(CommandEntry cmd, int index)
+        private void DrawCommandRow(RegisteredCommand cmd, int index)
         {
             var rowRect = EditorGUILayout.BeginHorizontal();
             if (Event.current.type == EventType.Repaint && (index & 1) == 1)
@@ -476,22 +485,28 @@ namespace AgentBridge
 
             GUILayout.Space(ListLeadingSpaceWidth);
             var locked = !cmd.CanDisable;
+            var enabled = IsCommandEnabled(cmd);
             using (new EditorGUI.DisabledScope(locked)) // 不可禁用命令:锁定为勾选、不可取消
             {
-                var newEnabled = EditorGUILayout.Toggle(cmd.Enabled, GUILayout.Width(16)); // 打勾=启用
-                if (newEnabled != cmd.Enabled)
+                var newEnabled = EditorGUILayout.Toggle(enabled, GUILayout.Width(16)); // 打勾=启用
+                if (newEnabled != enabled)
                 {
-                    CommandToggle.SetEnabled(cmd.Name, newEnabled);
-                    Rescan();
+                    CommandToggle.SetEnabled(cmd.Command, newEnabled);
                     GUIUtility.ExitGUI();
                 }
             }
             GUILayout.Space(CommandEnabledColumnWidth - 16f); // 补足"启用"列宽,使命令名与表头"命令"列对齐
             var nameTip = locked ? cmd.Description + "(必须命令,不可禁用)" : cmd.Description;
-            EditorGUILayout.LabelField(new GUIContent(cmd.Name, nameTip), EditorStyles.label, GUILayout.Width(CommandNameColumnWidth));
+            EditorGUILayout.LabelField(new GUIContent(cmd.Command, nameTip), EditorStyles.label,
+                GUILayout.Width(CommandNameColumnWidth));
             EditorGUILayout.LabelField(cmd.Description ?? "");
 
             EditorGUILayout.EndHorizontal();
+        }
+
+        private static bool IsCommandEnabled(RegisteredCommand command)
+        {
+            return !CommandRegistry.IsDisabled(command.Command);
         }
 
         private void WriteClaudeTemplate(string targetPath)

@@ -15,6 +15,7 @@ namespace AgentBridge
         public string Description => "返回 GameObject 及组件;components[] 可直接作为 set_property.component";
         public string Group => "Inspection";
         public bool CanDisable => true;
+        public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
 
         public object Execute(JObject @params)
         {
@@ -22,13 +23,7 @@ namespace AgentBridge
             var go = SceneObjectResolver.ResolveObject(objRef);
             var filter = @params?["componentTypes"]?.ToObject<string[]>();
             var hasFilter = filter != null && filter.Length > 0;
-            var objectInfo = new
-            {
-                name = go.name,
-                path = SceneObjectResolver.GetPath(go.transform),
-                instanceId = go.GetInstanceID(),
-                active = go.activeSelf
-            };
+            var objectInfo = SceneObjectResolver.Describe(go);
 
             var typeCounts = new Dictionary<string, int>();
             var outComps = new List<object>();
@@ -52,6 +47,7 @@ namespace AgentBridge
                     @object = objectInfo,
                     type = full,
                     index = idx,
+                    exactType = true,
                     properties = PropertySerializer.SerializeTopLevel(c)
                 });
             }
@@ -63,27 +59,27 @@ namespace AgentBridge
             };
         }
 
-        public JObject GetParamsSchema()
+        public JObject ParamsSchema { get; } = CreateParamsSchema();
+
+        private static JObject CreateParamsSchema()
         {
-            return JObject.Parse(@"{
-  ""type"": ""object"",
-  ""properties"": {
-    ""object"": {
-      ""type"": ""object"",
-      ""description"": ""GameObject 引用;path 或 instanceId 至少提供一个。"",
-      ""properties"": {
-        ""path"": { ""type"": ""string"" },
-        ""instanceId"": { ""type"": ""integer"" }
-      }
-    },
-    ""componentTypes"": {
-      ""type"": ""array"",
-      ""items"": { ""type"": ""string"" },
-      ""description"": ""可选组件类型名过滤。""
-    }
-  },
-  ""required"": [""object""]
-}");
+            var objectRef = SceneObjectResolver.CreateObjectRefSchema();
+            objectRef["description"] = "GameObject 引用;path 或 instanceId 至少提供一个。";
+            return new JObject
+            {
+                ["type"] = "object",
+                ["properties"] = new JObject
+                {
+                    ["object"] = objectRef,
+                    ["componentTypes"] = new JObject
+                    {
+                        ["type"] = "array",
+                        ["items"] = new JObject { ["type"] = "string", ["minLength"] = 1 },
+                        ["description"] = "可选组件类型名过滤。"
+                    }
+                },
+                ["required"] = new JArray("object")
+            };
         }
     }
 }

@@ -5,10 +5,10 @@ namespace AgentBridge
 {
     /// <summary>
     /// Agent → Unity 的请求信封。
-    /// 文件名约定 requests/{id}.request.json；文件名 id 是传输层规范身份。
-    /// 请求体必须显式提供 v、id、command，且 id 与文件名完全一致。
+    /// Agent 原子发布到固定 request.json，Unity Claim 后移动为 processing.json。
+    /// 请求体必须显式提供 v、id、command；id 仅用于信封关联，不参与文件命名。
     /// </summary>
-    public sealed class Request
+    internal sealed class Request
     {
         [JsonProperty("v")] public int V { get; set; }
         [JsonProperty("id")] public string Id { get; set; }

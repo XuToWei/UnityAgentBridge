@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
@@ -30,25 +31,47 @@ namespace AgentBridge
         /// <summary>启停一条命令(内置或扩展均可)。不可禁用命令拒绝禁用。</summary>
         public static void SetEnabled(string command, bool enabled)
         {
-            if (string.IsNullOrEmpty(command))
+            SetEnabledBulk(new[] { command }, enabled);
+        }
+
+        /// <summary>
+        /// 一次性启停多条命令。整批只读写一次 EditorPrefs,并只触发一次 commandsVersion 更新。
+        /// 不可禁用命令会被跳过。
+        /// </summary>
+        public static void SetEnabledBulk(IEnumerable<string> commands, bool enabled)
+        {
+            if (commands == null)
             {
                 return;
             }
-            if (!enabled && !CommandRegistry.CanDisable(command))
+
+            var requested = new HashSet<string>(
+                commands.Where(command => !string.IsNullOrEmpty(command)),
+                StringComparer.Ordinal);
+            if (requested.Count == 0)
             {
-                return; // 不可禁用命令
+                return;
             }
+
             var set = Read();
-            if (enabled)
+            var changed = false;
+            foreach (var command in requested)
             {
-                set.Remove(command);
+                if (!enabled && !CommandRegistry.CanDisable(command))
+                {
+                    continue;
+                }
+
+                changed |= enabled ? set.Remove(command) : set.Add(command);
             }
-            else
+
+            if (!changed)
             {
-                set.Add(command);
+                return;
             }
+
             Write(set);
-            Reapply();
+            CommandRegistry.SetDisabledCommands(set);
         }
 
         /// <summary>从 EditorPrefs 恢复禁用名单并同步到 CommandRegistry。domain reload 后不触发命令扫描。</summary>
@@ -60,12 +83,16 @@ namespace AgentBridge
         private static HashSet<string> Read()
         {
             var raw = EditorPrefs.GetString(PrefKey, "");
-            return new HashSet<string>(raw.Split('\n').Where(s => !string.IsNullOrEmpty(s)));
+            return new HashSet<string>(
+                raw.Split('\n').Where(s =>
+                    !string.IsNullOrEmpty(s)),
+                StringComparer.Ordinal);
         }
 
         private static void Write(IEnumerable<string> names)
         {
-            EditorPrefs.SetString(PrefKey, string.Join("\n", names));
+            EditorPrefs.SetString(PrefKey, string.Join("\n",
+                names.OrderBy(name => name, StringComparer.Ordinal)));
         }
     }
 }

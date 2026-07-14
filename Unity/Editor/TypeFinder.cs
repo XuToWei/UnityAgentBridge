@@ -1,73 +1,92 @@
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
+using UnityEditor;
 
 namespace AgentBridge
 {
     /// <summary>
-    /// 共享类型反射工具:跨所有已加载程序集安全枚举类型、按名+谓词查找类型。
-    /// 统一 ReflectionTypeLoadException 容错。供 SceneObjectResolver(找 Component 类型)、
-    /// AssetSupport(找 ScriptableObject 类型)复用。
+    /// 通过 Unity TypeCache 按程序集限定名、完整名或短名解析指定基类的类型。
     /// </summary>
     internal static class TypeFinder
     {
-        /// <summary>枚举所有已加载程序集里的类型(GetTypes 失败时退化到可加载子集)。</summary>
-        public static IEnumerable<Type> AllTypes()
+        public static Type Find(string name, Type assignableTo)
         {
-            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                Type[] types;
-                try
-                {
-                    types = asm.GetTypes();
-                }
-                catch (ReflectionTypeLoadException e)
-                {
-                    types = e.Types.Where(t => t != null).ToArray();
-                }
-
-                foreach (var t in types)
-                {
-                    yield return t;
-                }
-            }
+            return Find(name, assignableTo, out _);
         }
 
-        /// <summary>
-        /// 按类型名找满足 predicate 的类型:先全名(Type.GetType,再各程序集 asm.GetType),
-        /// 最后短名扫描。三级均要求 predicate 通过。无命中返回 null。
-        /// </summary>
-        public static Type Find(string name, Func<Type, bool> predicate)
+        public static Type Find(string name, Type assignableTo, out bool ambiguous)
         {
+            ambiguous = false;
             if (string.IsNullOrEmpty(name))
             {
                 return null;
             }
-
-            var t = Type.GetType(name);
-            if (t != null && predicate(t))
+            if (assignableTo == null)
             {
-                return t;
+                throw new ArgumentNullException(nameof(assignableTo));
             }
 
-            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+            // Assembly-qualified names identify one type explicitly and do not need a cache scan.
+            var qualified = ResolveAssemblyQualifiedName(name);
+            if (qualified != null && assignableTo.IsAssignableFrom(qualified))
             {
-                t = asm.GetType(name);
-                if (t != null && predicate(t))
+                return qualified;
+            }
+
+            // A full name always takes precedence over a short-name match.
+            var match = FindUnique(name, assignableTo, fullName: true, out ambiguous);
+            if (match != null || ambiguous)
+            {
+                return match;
+            }
+            return FindUnique(name, assignableTo, fullName: false, out ambiguous);
+        }
+
+        private static Type ResolveAssemblyQualifiedName(string name)
+        {
+            if (name.IndexOf(',') < 0)
+            {
+                return null;
+            }
+
+            try
+            {
+                return Type.GetType(name, throwOnError: false);
+            }
+            catch (Exception)
+            {
+                // Invalid or unavailable assembly-qualified names are simply not matches.
+                return null;
+            }
+        }
+
+        private static Type FindUnique(
+            string name,
+            Type assignableTo,
+            bool fullName,
+            out bool ambiguous)
+        {
+            ambiguous = false;
+            Type match = NameMatches(assignableTo, name, fullName) ? assignableTo : null;
+            foreach (var candidate in TypeCache.GetTypesDerivedFrom(assignableTo))
+            {
+                if (!NameMatches(candidate, name, fullName))
                 {
-                    return t;
+                    continue;
                 }
-            }
-
-            foreach (var candidate in AllTypes())
-            {
-                if (candidate.Name == name && predicate(candidate))
+                if (match != null && match != candidate)
                 {
-                    return candidate;
+                    ambiguous = true;
+                    return null;
                 }
+                match = candidate;
             }
-            return null;
+            return match;
+        }
+
+        private static bool NameMatches(Type candidate, string name, bool fullName)
+        {
+            return string.Equals(fullName ? candidate.FullName : candidate.Name,
+                name, StringComparison.Ordinal);
         }
     }
 }

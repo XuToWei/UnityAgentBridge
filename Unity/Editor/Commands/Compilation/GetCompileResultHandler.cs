@@ -14,6 +14,7 @@ namespace AgentBridge
         public string Description => "读最近一次编译结果:compiling/compiledAt/errorCount/warningCount/errors[]/warnings[]";
         public string Group => "Compilation";
         public bool CanDisable => true;
+        public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
 
         public object Execute(JObject @params)
         {
@@ -23,7 +24,11 @@ namespace AgentBridge
             return new
             {
                 compiling = result.Compiling,
+                generation = result.Generation,
+                requestedAt = result.RequestedAt,
                 compiledAt = result.CompiledAt,
+                requestFailed = result.RequestFailed,
+                requestError = result.RequestError,
                 errorCount = errors.Length,
                 warningCount = warnings.Length,
                 errors,
@@ -31,9 +36,6 @@ namespace AgentBridge
             };
         }
 
-        public JObject GetParamsSchema()
-        {
-            return new JObject(); // 无参 → 空 schema {}
-        }
+        public JObject ParamsSchema { get; } = new JObject(); // 无参 → 空 schema {}
     }
 }
