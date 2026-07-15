@@ -57,6 +57,20 @@ namespace AgentBridge
             return bytes.LongLength;
         }
 
+        public static long WritePng(
+            Target target,
+            Texture2D texture,
+            string encodeErrorCode,
+            string encodeErrorMessage)
+        {
+            var bytes = texture.EncodeToPNG();
+            if (bytes == null || bytes.Length == 0)
+            {
+                throw new CommandException(encodeErrorCode, encodeErrorMessage);
+            }
+            return Write(target, bytes);
+        }
+
         public static void ValidateSize(
             int width,
             int height,

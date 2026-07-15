@@ -20,7 +20,7 @@ namespace AgentBridge
         public string Command => "capture_game_view";
 
         public string Description =>
-            "捕获当前 Game 视图为 PNG,写入 .agentbridge/screenshots,返回 path/relativePath/fileName/format/width/height/bytes";
+            "捕获当前 Game 视图为 PNG,写入 .agentbridge/screenshots,返回 path/relativePath/fileName/format/width/height/fileByteLength";
 
         public string Group => "Capture";
         public bool CanDisable => true;
@@ -29,8 +29,7 @@ namespace AgentBridge
         public object Execute(JObject @params)
         {
             var target = ScreenshotSupport.Prepare(@params, "game_view");
-            var capture = CapturePng();
-            var length = ScreenshotSupport.Write(target, capture.Bytes);
+            var capture = CaptureAndWritePng(target);
 
             return new
             {
@@ -40,11 +39,11 @@ namespace AgentBridge
                 format = Format,
                 width = capture.Width,
                 height = capture.Height,
-                bytes = length
+                fileByteLength = capture.FileByteLength
             };
         }
 
-        private static CaptureResult CapturePng()
+        private static CaptureResult CaptureAndWritePng(ScreenshotSupport.Target target)
         {
             Texture2D texture = null;
             try
@@ -71,13 +70,12 @@ namespace AgentBridge
                 ScreenshotSupport.ValidateSize(
                     texture.width, texture.height, GameViewUnavailableError, "Game View ");
 
-                var bytes = texture.EncodeToPNG();
-                if (bytes == null || bytes.Length == 0)
-                {
-                    throw new CommandException(CaptureFailedError, "Game 视图截图 PNG 编码失败。");
-                }
-
-                return new CaptureResult(texture.width, texture.height, bytes);
+                var fileByteLength = ScreenshotSupport.WritePng(
+                    target,
+                    texture,
+                    CaptureFailedError,
+                    "Game 视图截图 PNG 编码失败。");
+                return new CaptureResult(texture.width, texture.height, fileByteLength);
             }
             catch (CommandException)
             {
@@ -300,16 +298,16 @@ namespace AgentBridge
 
         private readonly struct CaptureResult
         {
-            public CaptureResult(int width, int height, byte[] bytes)
+            public CaptureResult(int width, int height, long fileByteLength)
             {
                 Width = width;
                 Height = height;
-                Bytes = bytes;
+                FileByteLength = fileByteLength;
             }
 
             public int Width { get; }
             public int Height { get; }
-            public byte[] Bytes { get; }
+            public long FileByteLength { get; }
         }
     }
 }

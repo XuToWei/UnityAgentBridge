@@ -2619,7 +2619,7 @@ if ($Suite -ne "Baseline") {
     Invoke-TestCase "capture.overwrite" {
         $exchange = Invoke-BridgeRequest "capture_game_view" @{ fileName = $screenshotName; overwrite = $true } "capture-overwrite"
         Assert-Ok $exchange
-        Assert-True ([long]$exchange.Response.result.bytes -gt 0) "overwritten screenshot is empty"
+        Assert-True ([long]$exchange.Response.result.fileByteLength -gt 0) "overwritten screenshot is empty"
         return $exchange
     }
 
@@ -2684,7 +2684,7 @@ if ($Suite -ne "Baseline") {
         } "capture-scene-view-overwrite"
         Assert-Ok $exchange
         Assert-Equal ([int]$exchange.Response.result.width) 64 "overwritten SceneView capture width mismatch"
-        Assert-True ([long]$exchange.Response.result.bytes -gt 0) "overwritten SceneView screenshot is empty"
+        Assert-True ([long]$exchange.Response.result.fileByteLength -gt 0) "overwritten SceneView screenshot is empty"
         return $exchange
     }
 

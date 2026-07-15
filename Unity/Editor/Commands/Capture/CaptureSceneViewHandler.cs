@@ -9,7 +9,8 @@ namespace AgentBridge
     public sealed class CaptureSceneViewHandler : ICommandHandler
     {
         public string Command => "capture_scene_view";
-        public string Description => "把已有 SceneView 相机内容渲染为 PNG(不含窗口 chrome/工具栏),写入 .agentbridge/screenshots";
+        public string Description =>
+            "把已有 SceneView 相机内容渲染为 PNG(不含窗口 chrome/工具栏),写入 .agentbridge/screenshots,返回 path/relativePath/fileName/format/width/height/fileByteLength";
         public string Group => "Capture";
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
@@ -29,7 +30,7 @@ namespace AgentBridge
                          Mathf.Max(1, Mathf.RoundToInt(view.position.height * pixelsPerPoint));
             ScreenshotSupport.ValidateSize(width, height);
 
-            byte[] png;
+            long fileByteLength;
             var camera = view.camera;
             var previousTarget = camera.targetTexture;
             var previousActive = RenderTexture.active;
@@ -45,11 +46,11 @@ namespace AgentBridge
                 texture = new Texture2D(width, height, TextureFormat.RGBA32, false);
                 texture.ReadPixels(new Rect(0, 0, width, height), 0, 0, false);
                 texture.Apply(false, false);
-                png = texture.EncodeToPNG();
-                if (png == null || png.Length == 0)
-                {
-                    throw new CommandException("CAPTURE_SCENE_VIEW_FAILED", "PNG 编码结果为空");
-                }
+                fileByteLength = ScreenshotSupport.WritePng(
+                    target,
+                    texture,
+                    "CAPTURE_SCENE_VIEW_FAILED",
+                    "PNG 编码结果为空");
             }
             catch (CommandException)
             {
@@ -74,7 +75,6 @@ namespace AgentBridge
                 view.Repaint();
             }
 
-            var length = ScreenshotSupport.Write(target, png);
             return new
             {
                 path = target.Path,
@@ -83,7 +83,7 @@ namespace AgentBridge
                 format = "png",
                 width,
                 height,
-                bytes = length
+                fileByteLength
             };
         }
 
