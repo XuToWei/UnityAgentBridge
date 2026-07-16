@@ -7,13 +7,14 @@ namespace AgentBridge
 {
     /// <summary>
     /// Unity Editor 侧桥接宿主。已有 Bridge root 时，[InitializeOnLoad] 在 domain reload 后恢复轮询。
-    /// 轮询在 EditorApplication.update 主线程内同步分发,因此命令处理器天然运行在主线程。
+    /// 轮询从 EditorApplication.update 主线程启动异步分发；await 默认恢复到 Unity 主线程。
     /// </summary>
     [InitializeOnLoad]
     public static class AgentBridgeHost
     {
         private static FileChannel s_Channel;
         private static double s_LastPollTime;
+        private static bool s_IsProcessing;
 
         public static bool IsRunning =>
             s_Channel != null && Directory.Exists(s_Channel.RootDir);
@@ -57,6 +58,16 @@ namespace AgentBridge
 
         private static void Tick()
         {
+            _ = TickAsync();
+        }
+
+        private static async CommandTask TickAsync()
+        {
+            if (s_IsProcessing)
+            {
+                return;
+            }
+
             if (!IsRunning)
             {
                 Stop();
@@ -69,18 +80,24 @@ namespace AgentBridge
                 return;
             }
             s_LastPollTime = now;
+            var channel = s_Channel;
+            s_IsProcessing = true;
 
             try
             {
-                // FileChannel 在一个入口内完成 Claim、恢复、分发与终态响应发布。
-                s_Channel.TryProcessOne(
-                    CommandDispatcher.Dispatch,
+                // Claim 后直接 await handler，完成后再发布终态响应。
+                await channel.TryProcessOneAsync(
+                    CommandDispatcher.DispatchAsync,
                     CurrentCommandsVersion);
             }
             catch (Exception e)
             {
                 // response commit point 前失败时 processing.json 保留，下轮返回 INTERRUPTED。
                 Debug.LogError($"[AgentBridge] failed to process exchange: {e.Message}");
+            }
+            finally
+            {
+                s_IsProcessing = false;
             }
         }
 

@@ -19,7 +19,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.AllowedWithUndoCollapse;
 
-        public object Execute(JObject @params)
+        public async CommandTask<object> ExecuteAsync(JObject @params)
         {
             var persistent = ObjectMutationSupport.RequireStableState(Command);
             var kind = (@params?["kind"]?.Value<string>() ?? "empty").ToLowerInvariant();

@@ -172,121 +172,98 @@ namespace AgentBridge.Tests.ProductEditMode
         }
 
         [Test]
-        public void PreparedInvocation_DoesNotRepeatDisabledCheckAtExecution()
+        public CommandTask PreparedInvocation_DoesNotRepeatDisabledCheckAtExecution()
         {
-            const string command = "get_selection";
-            CommandToggle.SetEnabled(command, true);
+            return RunAsync();
 
-            Assert.That(CommandDispatcher.TryPrepare(
-                command,
-                new JObject(),
-                CommandInvocationPolicy.Single,
-                out var prepared,
-                out var preparationError), Is.True,
-                preparationError?.Error?.Message);
-
-            CommandToggle.SetEnabled(command, false);
-
-            var preparedResponse = CommandDispatcher.Dispatch(prepared);
-            Assert.That(preparedResponse.Status, Is.EqualTo("ok"));
-
-            var freshResponse = CommandDispatcher.Dispatch(new Request
+            async CommandTask RunAsync()
             {
-                V = 1,
-                Id = "fresh-disabled",
-                Command = command,
-                Params = new JObject()
-            });
-            Assert.That(freshResponse.Status, Is.EqualTo("error"));
-            Assert.That(freshResponse.Error.Code, Is.EqualTo(ErrorCodes.CommandDisabled));
-        }
-
-        [Test]
-        public void PreparedBatchInvocation_DoesNotRepeatSchemaValidationAtExecution()
-        {
-            const string command = "get_selection";
-            CommandToggle.SetEnabled(command, true);
-            Assert.That(CommandDispatcher.TryPrepare(
-                command,
-                new JObject(),
-                CommandInvocationPolicy.BatchStep,
-                out var prepared,
-                out var preparationError), Is.True,
-                preparationError?.Error?.Message);
-            Assert.That(CommandRegistry.TryGetRegistered(command, out var registration), Is.True);
-
-            var originalSchema = (JObject)registration.ParamsSchema.DeepClone();
-            try
-            {
-                registration.ParamsSchema["required"] = new JArray("added_after_prepare");
-
-                var preparedResponse = CommandDispatcher.Dispatch(prepared);
-                Assert.That(preparedResponse.Status, Is.EqualTo("ok"));
+                const string command = "get_selection";
+                CommandToggle.SetEnabled(command, true);
 
                 Assert.That(CommandDispatcher.TryPrepare(
                     command,
                     new JObject(),
-                    CommandInvocationPolicy.BatchStep,
-                    out _,
-                    out var freshError), Is.False);
-                Assert.That(freshError.Error.Code, Is.EqualTo(ErrorCodes.InvalidParams));
-            }
-            finally
-            {
-                registration.ParamsSchema.RemoveAll();
-                registration.ParamsSchema.Merge(originalSchema);
-            }
-        }
+                    CommandInvocationPolicy.Single,
+                    out var prepared,
+                    out var preparationError), Is.True,
+                    preparationError?.Error?.Message);
 
-        [Test]
-        public void BatchPreparation_RejectsRecursiveBatchBeforeExecution()
-        {
-            var response = CommandDispatcher.Dispatch(new Request
-            {
-                V = 1,
-                Id = "recursive-batch",
-                Command = "batch",
-                Params = new JObject
+                CommandToggle.SetEnabled(command, false);
+
+                var preparedResponse = await CommandDispatcher.DispatchAsync(prepared);
+                Assert.That(preparedResponse.Status, Is.EqualTo("ok"));
+
+                var freshResponse = await CommandDispatcher.DispatchAsync(new Request
                 {
-                    ["steps"] = new JArray
-                    {
-                        new JObject
-                        {
-                            ["command"] = "batch",
-                            ["params"] = new JObject
-                            {
-                                ["steps"] = new JArray
-                                {
-                                    new JObject { ["command"] = "ping" }
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-
-            Assert.That(response.Status, Is.EqualTo("error"));
-            Assert.That(response.Error.Code, Is.EqualTo("BATCH_COMMAND_NOT_ALLOWED"));
+                    V = 1,
+                    Id = "fresh-disabled",
+                    Command = command,
+                    Params = new JObject()
+                });
+                Assert.That(freshResponse.Status, Is.EqualTo("error"));
+                Assert.That(freshResponse.Error.Code, Is.EqualTo(ErrorCodes.CommandDisabled));
+            }
         }
 
         [Test]
-        public void BatchHandler_PreflightsEveryStepBeforeExecutingAnyStep()
+        public CommandTask PreparedBatchInvocation_DoesNotRepeatSchemaValidationAtExecution()
         {
-            var marker = new GameObject("__AgentBridgeBatchPreflightMarker");
-            var previousSelection = Selection.objects;
-            try
+            return RunAsync();
+
+            async CommandTask RunAsync()
             {
-                Selection.activeGameObject = marker;
-                var error = Assert.Throws<CommandException>(() =>
-                    new BatchHandler().Execute(new JObject
+                const string command = "get_selection";
+                CommandToggle.SetEnabled(command, true);
+                Assert.That(CommandDispatcher.TryPrepare(
+                    command,
+                    new JObject(),
+                    CommandInvocationPolicy.BatchStep,
+                    out var prepared,
+                    out var preparationError), Is.True,
+                    preparationError?.Error?.Message);
+                Assert.That(CommandRegistry.TryGetRegistered(command, out var registration), Is.True);
+
+                var originalSchema = (JObject)registration.ParamsSchema.DeepClone();
+                try
+                {
+                    registration.ParamsSchema["required"] = new JArray("added_after_prepare");
+
+                    var preparedResponse = await CommandDispatcher.DispatchAsync(prepared);
+                    Assert.That(preparedResponse.Status, Is.EqualTo("ok"));
+
+                    Assert.That(CommandDispatcher.TryPrepare(
+                        command,
+                        new JObject(),
+                        CommandInvocationPolicy.BatchStep,
+                        out _,
+                        out var freshError), Is.False);
+                    Assert.That(freshError.Error.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+                }
+                finally
+                {
+                    registration.ParamsSchema.RemoveAll();
+                    registration.ParamsSchema.Merge(originalSchema);
+                }
+            }
+        }
+
+        [Test]
+        public CommandTask BatchPreparation_RejectsRecursiveBatchBeforeExecution()
+        {
+            return RunAsync();
+
+            async CommandTask RunAsync()
+            {
+                var response = await CommandDispatcher.DispatchAsync(new Request
+                {
+                    V = 1,
+                    Id = "recursive-batch",
+                    Command = "batch",
+                    Params = new JObject
                     {
                         ["steps"] = new JArray
                         {
-                            new JObject
-                            {
-                                ["command"] = "set_selection",
-                                ["params"] = new JObject { ["objects"] = new JArray() }
-                            },
                             new JObject
                             {
                                 ["command"] = "batch",
@@ -299,67 +276,129 @@ namespace AgentBridge.Tests.ProductEditMode
                                 }
                             }
                         }
-                    }));
+                    }
+                });
 
-                Assert.That(error.Code, Is.EqualTo("BATCH_COMMAND_NOT_ALLOWED"));
-                Assert.That(Selection.activeGameObject, Is.SameAs(marker));
+                Assert.That(response.Status, Is.EqualTo("error"));
+                Assert.That(response.Error.Code, Is.EqualTo("BATCH_COMMAND_NOT_ALLOWED"));
             }
-            finally
+        }
+
+        [Test]
+        public CommandTask BatchHandler_PreflightsEveryStepBeforeExecutingAnyStep()
+        {
+            return RunAsync();
+
+            async CommandTask RunAsync()
             {
-                Selection.objects = previousSelection;
-                UnityEngine.Object.DestroyImmediate(marker);
+                var marker = new GameObject("__AgentBridgeBatchPreflightMarker");
+                var previousSelection = Selection.objects;
+                try
+                {
+                    Selection.activeGameObject = marker;
+                    CommandException error = null;
+                    try
+                    {
+                        await new BatchHandler().ExecuteAsync(new JObject
+                        {
+                            ["steps"] = new JArray
+                            {
+                                new JObject
+                                {
+                                    ["command"] = "set_selection",
+                                    ["params"] = new JObject { ["objects"] = new JArray() }
+                                },
+                                new JObject
+                                {
+                                    ["command"] = "batch",
+                                    ["params"] = new JObject
+                                    {
+                                        ["steps"] = new JArray
+                                        {
+                                            new JObject { ["command"] = "ping" }
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    }
+                    catch (CommandException ex)
+                    {
+                        error = ex;
+                    }
+
+                    Assert.That(error, Is.Not.Null);
+                    Assert.That(error.Code, Is.EqualTo("BATCH_COMMAND_NOT_ALLOWED"));
+                    Assert.That(Selection.activeGameObject, Is.SameAs(marker));
+                }
+                finally
+                {
+                    Selection.objects = previousSelection;
+                    UnityEngine.Object.DestroyImmediate(marker);
+                }
             }
         }
 
         [TestCase(true, 2, true)]
         [TestCase(false, 3, false)]
-        public void BatchHandler_PreservesResultOrderAndStopOnError(
+        public CommandTask BatchHandler_PreservesResultOrderAndStopOnError(
             bool stopOnError,
             int expectedExecuted,
             bool expectedStopped)
         {
-            var result = JObject.FromObject(new BatchHandler().Execute(new JObject
-            {
-                ["steps"] = new JArray
-                {
-                    new JObject { ["command"] = "ping" },
-                    new JObject
-                    {
-                        ["command"] = "get_object",
-                        ["params"] = new JObject
-                        {
-                            ["object"] = new JObject
-                            {
-                                ["path"] = "/__AgentBridgeMissingForBatch__"
-                            }
-                        }
-                    },
-                    new JObject { ["command"] = "ping" }
-                },
-                ["stopOnError"] = stopOnError,
-                ["collapseUndo"] = false
-            }));
+            return RunAsync();
 
-            Assert.That(result["success"].Value<bool>(), Is.False);
-            Assert.That(result["executed"].Value<int>(), Is.EqualTo(expectedExecuted));
-            Assert.That(result["requested"].Value<int>(), Is.EqualTo(3));
-            Assert.That(result["failedIndex"].Value<int>(), Is.EqualTo(1));
-            Assert.That(result["stopped"].Value<bool>(), Is.EqualTo(expectedStopped));
-            Assert.That(result["results"][0]["status"].Value<string>(), Is.EqualTo("ok"));
-            Assert.That(result["results"][1]["status"].Value<string>(), Is.EqualTo("error"));
-            if (!stopOnError)
+            async CommandTask RunAsync()
             {
-                Assert.That(result["results"][2]["status"].Value<string>(), Is.EqualTo("ok"));
+                var batchResult = await new BatchHandler().ExecuteAsync(new JObject
+                {
+                    ["steps"] = new JArray
+                    {
+                        new JObject { ["command"] = "ping" },
+                        new JObject
+                        {
+                            ["command"] = "get_object",
+                            ["params"] = new JObject
+                            {
+                                ["object"] = new JObject
+                                {
+                                    ["path"] = "/__AgentBridgeMissingForBatch__"
+                                }
+                            }
+                        },
+                        new JObject { ["command"] = "ping" }
+                    },
+                    ["stopOnError"] = stopOnError,
+                    ["collapseUndo"] = false
+                });
+                var result = JObject.FromObject(batchResult);
+
+                Assert.That(result["success"].Value<bool>(), Is.False);
+                Assert.That(result["executed"].Value<int>(), Is.EqualTo(expectedExecuted));
+                Assert.That(result["requested"].Value<int>(), Is.EqualTo(3));
+                Assert.That(result["failedIndex"].Value<int>(), Is.EqualTo(1));
+                Assert.That(result["stopped"].Value<bool>(), Is.EqualTo(expectedStopped));
+                Assert.That(result["results"][0]["status"].Value<string>(), Is.EqualTo("ok"));
+                Assert.That(result["results"][1]["status"].Value<string>(), Is.EqualTo("error"));
+                if (!stopOnError)
+                {
+                    Assert.That(result["results"][2]["status"].Value<string>(), Is.EqualTo("ok"));
+                }
             }
         }
 
         [Test]
-        public void Dispatch_NullRequest_ReturnsInternalError()
+        public CommandTask Dispatch_NullRequest_ReturnsInternalError()
         {
-            var response = CommandDispatcher.Dispatch((Request)null);
+            return RunAsync();
 
-            Assert.That(response.Status, Is.EqualTo("error"));
-            Assert.That(response.Error.Code, Is.EqualTo(ErrorCodes.InternalError));
+            async CommandTask RunAsync()
+            {
+                var response = await CommandDispatcher.DispatchAsync((Request)null);
+
+                Assert.That(response.Status, Is.EqualTo("error"));
+                Assert.That(response.Error.Code, Is.EqualTo(ErrorCodes.InternalError));
+            }
         }
 
         private static void AssertBatchPreparation(
@@ -412,7 +451,7 @@ namespace AgentBridge.Tests.ProductEditMode
         public bool CanDisable => false;
         public CommandBatchMode BatchMode => CommandBatchMode.NotAllowed;
 
-        public object Execute(JObject @params)
+        public async CommandTask<object> ExecuteAsync(JObject @params)
         {
             return null;
         }

@@ -45,7 +45,7 @@ public sealed class MyHandler : ICommandHandler
     public string Group => "Custom";                      // 管理器窗口里的功能分组
     public bool CanDisable => true;                       // 是否允许在命令管理器禁用
     public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
-    public object Execute(JObject @params) => new { ok = true };
+    public async CommandTask<object> ExecuteAsync(JObject @params) => new { ok = true };
     public JObject ParamsSchema { get; } = JObject.Parse(@"{ ""type"":""object"" }"); // 必选:参数 schema,无参返回 new JObject()(空 {})
     // 抛 CommandException(code, msg) 产生自定义错误码;抛其他异常 → HANDLER_EXCEPTION。
 }
@@ -75,7 +75,7 @@ public sealed class MyHandler : ICommandHandler
 1. **正常往返**:`Start` 后,原子发布 `request.json`(command=ping)→ `response.json` 出现,`status=ok`、`result.message="pong"`、响应 `id` 与请求一致；完整读取并等待 `processing.json` 消失后删除 `response.json`。
 2. **非法 id**:请求 JSON 的 `id` 为空、类型错误或超过 64 字符 → 不执行命令；`response.json` 返回 `error.code=INVALID_REQUEST`、`id=""`。
 3. **未知命令**:command=`nope` → 响应 `error.code=UNKNOWN_COMMAND`。
-4. **handler 异常**:临时加一个 `Execute` 抛 `new System.Exception("boom")` 的测试 handler(验完删除,勿提交)→ 响应 `error.code=HANDLER_EXCEPTION`,message 含堆栈摘要。
+4. **handler 异常**:临时加一个 `ExecuteAsync` 抛 `new System.Exception("boom")` 的测试 handler(验完删除,勿提交)→ 响应 `error.code=HANDLER_EXCEPTION`,message 含堆栈摘要。
 5. **半截文件**:只写 `request.json.tmp` 不 rename → 无任何响应；rename 为 `request.json` 后才处理。
 6. **认领单次**:单个请求只产生一份响应，提交后 `processing.json` 不残留。
 7. **单通讯约束**:Agent 必须完整读取当前 `response.json`、等待 `processing.json` 消失、再删除响应，之后才可发送下一请求；临时请求不会被认领。

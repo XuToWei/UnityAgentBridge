@@ -26,7 +26,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
 
-        public object Execute(JObject @params)
+        public async CommandTask<object> ExecuteAsync(JObject @params)
         {
             var target = ScreenshotSupport.Prepare(@params, "game_view");
             var capture = CaptureAndWritePng(target);

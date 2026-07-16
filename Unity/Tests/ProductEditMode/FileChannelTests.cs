@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text;
+using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
@@ -73,19 +74,19 @@ namespace AgentBridge.Tests.ProductEditMode
         }
 
         [Test]
-        public void TryProcessOneDispatchesRequestAndPublishesResponse()
+        public async Task TryProcessOneDispatchesRequestAndPublishesResponse()
         {
             var channel = new FileChannel(m_Root);
             WriteRequest(RequestPath, "only");
             var dispatchCount = 0;
 
-            var processed = channel.TryProcessOne(request =>
+            var processed = await channel.TryProcessOneAsync(AsyncDispatch(request =>
             {
                 dispatchCount++;
                 Assert.That(request.Id, Is.EqualTo("only"));
                 Assert.That(request.Command, Is.EqualTo("ping"));
                 return OkResponse();
-            }, () => "test-version");
+            }), () => "test-version");
 
             Assert.That(processed, Is.True);
             Assert.That(dispatchCount, Is.EqualTo(1));
@@ -102,7 +103,36 @@ namespace AgentBridge.Tests.ProductEditMode
         }
 
         [Test]
-        public void TryProcessOneIgnoresTemporaryFiles()
+        public async Task TryProcessOneAsyncKeepsClaimUntilDispatchCompletes()
+        {
+            var channel = new FileChannel(m_Root);
+            WriteRequest(RequestPath, "async");
+            var completion = new TaskCompletionSource<bool>();
+
+            async CommandTask<Response> RunAsync(Request request)
+            {
+                Assert.That(request.Id, Is.EqualTo("async"));
+                await completion.Task;
+                return OkResponse();
+            }
+
+            var processing = channel.TryProcessOneAsync(
+                RunAsync,
+                () => "test-version");
+
+            Assert.That(processing.IsCompleted, Is.False);
+            Assert.That(File.Exists(RequestPath), Is.False);
+            Assert.That(File.Exists(ProcessingPath), Is.True);
+            Assert.That(File.Exists(ResponsePath), Is.False);
+
+            completion.SetResult(true);
+            Assert.That(await processing, Is.True);
+            Assert.That(File.Exists(ProcessingPath), Is.False);
+            Assert.That(ReadResponse()["status"]?.Value<string>(), Is.EqualTo("ok"));
+        }
+
+        [Test]
+        public async Task TryProcessOneIgnoresTemporaryFiles()
         {
             var channel = new FileChannel(m_Root);
             var requestTemp = $"{RequestPath}.tmp";
@@ -111,11 +141,11 @@ namespace AgentBridge.Tests.ProductEditMode
             File.WriteAllText(responseTemp, "partial response");
             var dispatchCount = 0;
 
-            var processed = channel.TryProcessOne(request =>
+            var processed = await channel.TryProcessOneAsync(AsyncDispatch(request =>
             {
                 dispatchCount++;
                 return OkResponse();
-            }, () => "test-version");
+            }), () => "test-version");
 
             Assert.That(processed, Is.False);
             Assert.That(dispatchCount, Is.Zero);
@@ -125,18 +155,18 @@ namespace AgentBridge.Tests.ProductEditMode
         }
 
         [Test]
-        public void ExistingResponseBlocksNextRequestUntilAgentDeletesIt()
+        public async Task ExistingResponseBlocksNextRequestUntilAgentDeletesIt()
         {
             var channel = new FileChannel(m_Root);
             WriteResponse("previous");
             WriteRequest(RequestPath, "next");
             var dispatchCount = 0;
 
-            var processed = channel.TryProcessOne(request =>
+            var processed = await channel.TryProcessOneAsync(AsyncDispatch(request =>
             {
                 dispatchCount++;
                 return OkResponse();
-            }, () => "test-version");
+            }), () => "test-version");
 
             Assert.That(processed, Is.False);
             Assert.That(dispatchCount, Is.Zero);
@@ -145,11 +175,11 @@ namespace AgentBridge.Tests.ProductEditMode
             Assert.That(ReadResponse()["id"]?.Value<string>(), Is.EqualTo("previous"));
 
             File.Delete(ResponsePath);
-            processed = channel.TryProcessOne(request =>
+            processed = await channel.TryProcessOneAsync(AsyncDispatch(request =>
             {
                 dispatchCount++;
                 return OkResponse();
-            }, () => "test-version");
+            }), () => "test-version");
 
             Assert.That(processed, Is.True);
             Assert.That(dispatchCount, Is.EqualTo(1));
@@ -159,17 +189,17 @@ namespace AgentBridge.Tests.ProductEditMode
         }
 
         [Test]
-        public void ProcessingWithoutResponsePublishesInterruptedWithoutDispatch()
+        public async Task ProcessingWithoutResponsePublishesInterruptedWithoutDispatch()
         {
             var channel = new FileChannel(m_Root);
             WriteRequest(ProcessingPath, "interrupted");
             var dispatchCount = 0;
 
-            var processed = channel.TryProcessOne(request =>
+            var processed = await channel.TryProcessOneAsync(AsyncDispatch(request =>
             {
                 dispatchCount++;
                 return OkResponse();
-            }, () => "test-version");
+            }), () => "test-version");
 
             Assert.That(processed, Is.True);
             Assert.That(dispatchCount, Is.Zero);
@@ -182,7 +212,7 @@ namespace AgentBridge.Tests.ProductEditMode
         }
 
         [Test]
-        public void ProcessingWithResponseOnlyClearsProcessing()
+        public async Task ProcessingWithResponseOnlyClearsProcessing()
         {
             var channel = new FileChannel(m_Root);
             WriteRequest(ProcessingPath, "completed");
@@ -190,11 +220,11 @@ namespace AgentBridge.Tests.ProductEditMode
             var originalResponse = File.ReadAllText(ResponsePath);
             var dispatchCount = 0;
 
-            var processed = channel.TryProcessOne(request =>
+            var processed = await channel.TryProcessOneAsync(AsyncDispatch(request =>
             {
                 dispatchCount++;
                 return OkResponse();
-            }, () => "test-version");
+            }), () => "test-version");
 
             Assert.That(processed, Is.False);
             Assert.That(dispatchCount, Is.Zero);
@@ -203,7 +233,7 @@ namespace AgentBridge.Tests.ProductEditMode
         }
 
         [Test]
-        public void OversizedProcessingPublishesInterruptedWithEmptyId()
+        public async Task OversizedProcessingPublishesInterruptedWithEmptyId()
         {
             var channel = new FileChannel(m_Root);
             using (var file = File.Create(ProcessingPath))
@@ -212,11 +242,11 @@ namespace AgentBridge.Tests.ProductEditMode
             }
             var dispatchCount = 0;
 
-            var processed = channel.TryProcessOne(request =>
+            var processed = await channel.TryProcessOneAsync(AsyncDispatch(request =>
             {
                 dispatchCount++;
                 return OkResponse();
-            }, () => "test-version");
+            }), () => "test-version");
 
             Assert.That(processed, Is.True);
             Assert.That(dispatchCount, Is.Zero);
@@ -228,13 +258,13 @@ namespace AgentBridge.Tests.ProductEditMode
         }
 
         [Test]
-        public void OversizedResultPublishesCompactStructuredError()
+        public async Task OversizedResultPublishesCompactStructuredError()
         {
             var channel = new FileChannel(m_Root);
             WriteRequest(RequestPath, "large");
             var dispatchCount = 0;
 
-            var processed = channel.TryProcessOne(request =>
+            var processed = await channel.TryProcessOneAsync(AsyncDispatch(request =>
             {
                 dispatchCount++;
                 return new Response
@@ -247,7 +277,7 @@ namespace AgentBridge.Tests.ProductEditMode
                             checked((int)FileChannel.MaxFileBytes))
                     }
                 };
-            }, () => "test-version");
+            }), () => "test-version");
 
             Assert.That(processed, Is.True);
             Assert.That(dispatchCount, Is.EqualTo(1));
@@ -265,17 +295,17 @@ namespace AgentBridge.Tests.ProductEditMode
         }
 
         [Test]
-        public void InvalidRequestPublishesStructuredErrorWithoutDispatch()
+        public async Task InvalidRequestPublishesStructuredErrorWithoutDispatch()
         {
             var channel = new FileChannel(m_Root);
             File.WriteAllText(RequestPath, "{not json");
             var dispatchCount = 0;
 
-            var processed = channel.TryProcessOne(request =>
+            var processed = await channel.TryProcessOneAsync(AsyncDispatch(request =>
             {
                 dispatchCount++;
                 return OkResponse();
-            }, () => "test-version");
+            }), () => "test-version");
 
             Assert.That(processed, Is.True);
             Assert.That(dispatchCount, Is.Zero);
@@ -291,7 +321,7 @@ namespace AgentBridge.Tests.ProductEditMode
         }
 
         [Test]
-        public void MissingParamsPublishesInvalidRequestWithoutDispatch()
+        public async Task MissingParamsPublishesInvalidRequestWithoutDispatch()
         {
             var channel = new FileChannel(m_Root);
             var request = new JObject
@@ -305,11 +335,11 @@ namespace AgentBridge.Tests.ProductEditMode
                 request.ToString(Newtonsoft.Json.Formatting.None));
             var dispatchCount = 0;
 
-            var processed = channel.TryProcessOne(parsed =>
+            var processed = await channel.TryProcessOneAsync(AsyncDispatch(parsed =>
             {
                 dispatchCount++;
                 return OkResponse();
-            }, () => "test-version");
+            }), () => "test-version");
 
             Assert.That(processed, Is.True);
             Assert.That(dispatchCount, Is.Zero);
@@ -329,6 +359,18 @@ namespace AgentBridge.Tests.ProductEditMode
                 ["params"] = new JObject()
             };
             File.WriteAllText(path, request.ToString(Newtonsoft.Json.Formatting.None));
+        }
+
+        private static Func<Request, CommandTask<Response>> AsyncDispatch(
+            Func<Request, Response> dispatch)
+        {
+            return RunAsync;
+
+            async CommandTask<Response> RunAsync(Request request)
+            {
+                await Task.CompletedTask;
+                return dispatch(request);
+            }
         }
 
         private void WriteResponse(string id)

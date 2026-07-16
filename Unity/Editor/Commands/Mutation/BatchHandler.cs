@@ -12,7 +12,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.NotAllowed;
 
-        public object Execute(JObject @params)
+        public async CommandTask<object> ExecuteAsync(JObject @params)
         {
             var steps = (JArray)@params["steps"];
             var stopOnError = SceneCommandSupport.ReadBool(@params, "stopOnError", true);
@@ -56,7 +56,7 @@ namespace AgentBridge
                 for (var i = 0; i < validated.Count; i++)
                 {
                     var step = validated[i];
-                    var response = CommandDispatcher.Dispatch(step);
+                    var response = await CommandDispatcher.DispatchAsync(step);
                     var result = new JObject
                     {
                         ["index"] = i,

@@ -15,7 +15,7 @@ namespace AgentBridge
         public bool CanDisable => false;
         public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
 
-        public object Execute(JObject @params)
+        public async CommandTask<object> ExecuteAsync(JObject @params)
         {
             return new
             {

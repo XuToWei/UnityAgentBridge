@@ -52,11 +52,12 @@ namespace AgentBridge
         }
 
         /// <summary>
-        /// 处理至多一个 Exchange。Agent 必须完整读入 response.json，等待
-        /// processing.json 消失后再删除响应；未确认响应存在时不会认领下一请求。
+        /// 处理至多一个 Exchange。Claim 后直接 await 命令完成并发布响应；调用方必须
+        /// 避免并发调用。await 期间
+        /// processing.json 保留，domain reload 后由新实例按 INTERRUPTED 恢复。
         /// </summary>
-        internal bool TryProcessOne(
-            Func<Request, Response> dispatch,
+        internal async CommandTask<bool> TryProcessOneAsync(
+            Func<Request, CommandTask<Response>> dispatch,
             Func<string> getCommandsVersion)
         {
             if (dispatch == null)
@@ -101,7 +102,7 @@ namespace AgentBridge
             var request = ParseClaim(out var responseId, out var validationError);
             var response = request == null
                 ? Error(ErrorCodes.InvalidRequest, validationError)
-                : dispatch(request);
+                : await dispatch(request);
             PublishResponse(response, responseId, getCommandsVersion());
             return true;
         }

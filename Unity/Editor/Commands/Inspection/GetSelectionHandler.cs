@@ -13,7 +13,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
 
-        public object Execute(JObject @params)
+        public async CommandTask<object> ExecuteAsync(JObject @params)
         {
             var all = Selection.gameObjects;
             var sceneObjects = all.Where(go => go != null && !EditorUtility.IsPersistent(go) && go.scene.IsValid()).ToArray();

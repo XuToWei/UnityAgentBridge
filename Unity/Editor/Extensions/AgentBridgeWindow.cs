@@ -19,6 +19,7 @@ namespace AgentBridge
         private const float ListLeadingSpaceWidth = 2f;
         private const float CommandEnabledColumnWidth = 76f;
         private const float CommandNameColumnWidth = 150f;
+        private const float CommandGroupColumnWidth = 110f;
         private const float MarkdownStateColumnWidth = 72f;
         private const float MarkdownActionColumnWidth = 112f;
         private static readonly string[] s_MarkdownTargetFileNames = { "CLAUDE.md", "AGENTS.md" };
@@ -45,6 +46,7 @@ namespace AgentBridge
         private CommandSortColumn m_CommandSortColumn = CommandSortColumn.Name;
         private bool m_EnabledSortAscending = true;
         private bool m_NameSortAscending = true;
+        private bool m_GroupSortAscending = true;
         private bool m_CommandsLoaded;
         private int m_SelectedTab;
         private Vector2 m_Scroll;
@@ -58,7 +60,8 @@ namespace AgentBridge
         private enum CommandSortColumn
         {
             Enabled,
-            Name
+            Name,
+            Group
         }
 
         [MenuItem("Window/Agent Bridge")]
@@ -422,17 +425,22 @@ namespace AgentBridge
                         ? cmds.OrderBy(IsCommandEnabled).ThenBy(c => c.Command)
                         : cmds.OrderByDescending(IsCommandEnabled).ThenBy(c => c.Command);
                 case CommandSortColumn.Name:
-                default:
                     return m_NameSortAscending
                         ? cmds.OrderBy(c => c.Command)
                         : cmds.OrderByDescending(c => c.Command);
+                case CommandSortColumn.Group:
+                    return m_GroupSortAscending
+                        ? cmds.OrderBy(CommandGroupName).ThenBy(c => c.Command)
+                        : cmds.OrderByDescending(CommandGroupName).ThenBy(c => c.Command);
+                default:
+                    return cmds.OrderBy(c => c.Command);
             }
         }
 
         // 按 ICommandHandler.Group 功能分组(空则归"其它"),按收集到的分组名排列。
         private static List<CommandGroup> GroupByTag(List<RegisteredCommand> rows)
         {
-            return rows.GroupBy(c => string.IsNullOrEmpty(c.Group) ? "其它" : c.Group)
+            return rows.GroupBy(CommandGroupName)
                 .OrderBy(g => g.Key)
                 .Select(g => new CommandGroup
                 {
@@ -458,6 +466,11 @@ namespace AgentBridge
                 {
                     ToggleCommandSort(CommandSortColumn.Name);
                 }
+                if (GUILayout.Button(SortHeaderContent("分组", m_GroupSortAscending, "点击按分组升序/降序排序"),
+                    m_SortHeaderStyle, GUILayout.Width(CommandGroupColumnWidth)))
+                {
+                    ToggleCommandSort(CommandSortColumn.Group);
+                }
                 GUILayout.Label("描述", EditorStyles.label);
             }
             DrawSeparator();
@@ -471,9 +484,13 @@ namespace AgentBridge
                 {
                     m_EnabledSortAscending = !m_EnabledSortAscending;
                 }
-                else
+                else if (column == CommandSortColumn.Name)
                 {
                     m_NameSortAscending = !m_NameSortAscending;
+                }
+                else
+                {
+                    m_GroupSortAscending = !m_GroupSortAscending;
                 }
                 return;
             }
@@ -505,6 +522,8 @@ namespace AgentBridge
             var nameTip = locked ? $"{cmd.Description}(必须命令,不可禁用)" : cmd.Description;
             EditorGUILayout.LabelField(new GUIContent(cmd.Command, nameTip), EditorStyles.label,
                 GUILayout.Width(CommandNameColumnWidth));
+            EditorGUILayout.LabelField(CommandGroupName(cmd), EditorStyles.label,
+                GUILayout.Width(CommandGroupColumnWidth));
             EditorGUILayout.LabelField(cmd.Description ?? "");
 
             EditorGUILayout.EndHorizontal();
@@ -513,6 +532,11 @@ namespace AgentBridge
         private static bool IsCommandEnabled(RegisteredCommand command)
         {
             return !CommandRegistry.IsDisabled(command.Command);
+        }
+
+        private static string CommandGroupName(RegisteredCommand command)
+        {
+            return string.IsNullOrEmpty(command.Group) ? "其它" : command.Group;
         }
 
         private void WriteClaudeTemplate(string targetPath)

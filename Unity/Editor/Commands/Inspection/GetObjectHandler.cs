@@ -17,7 +17,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
 
-        public object Execute(JObject @params)
+        public async CommandTask<object> ExecuteAsync(JObject @params)
         {
             var objRef = @params?["object"]?.ToObject<ObjectRef>();
             var go = SceneObjectResolver.ResolveObject(objRef);

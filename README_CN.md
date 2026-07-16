@@ -54,15 +54,21 @@ agent <── .agentbridge/response.json <──rename── response.json.tmp
 
 ## 内置命令
 
-包提供以下能力组：
+包当前包含以下内置命令，按 `ICommandHandler.Group` 分组：
 
-- **发现与检查**——连通性、命令 metadata、层级、对象、选择、场景、资产、依赖、Console、编译和测试结果。
-- **场景与 PlayMode 控制**——打开/保存/关闭/激活场景，运行/停止，暂停/恢复/单帧，Game View 分辨率与截图。
-- **场景修改**——创建/更新/删除对象、组件和序列化属性，选择、框选、Prefab、Undo/Redo、菜单与非原子 batch。
-- **资产修改**——创建/导入/移动/删除资产，修改 Importer，刷新并请求重编译。
-- **测试**——启动带过滤条件的 EditMode/PlayMode 测试并轮询限量结果。
+- **Meta**——`ping`、`list_commands`
+- **Inspection**——`get_hierarchy`、`get_object`、`get_selection`、`get_asset`、`get_asset_dependencies`、`list_assets`
+- **Scenes**——`list_scenes`、`open_scene`、`save_scene`、`close_scene`、`set_active_scene`
+- **Mutation**——`create_object`、`update_object`、`delete_object`、`add_component`、`remove_component`、`set_property`、`set_selection`、`frame_object`、`set_game_view_resolution`、`invoke_menu`、`undo`、`redo`、`batch`
+- **Prefab**——`prefab`
+- **Assets**——`create_asset`、`import_asset`、`move_asset`、`delete_asset`、`set_importer_property`、`refresh`
+- **PlayMode**——`play_scene`、`pause`、`resume`、`step`
+- **Capture**——`capture_game_view`、`capture_scene_view`
+- **Console**——`search_logs`、`clear_logs`
+- **Compilation**——`recompile`、`get_compile_result`
+- **Testing**——`run_tests`、`get_test_result`
 
-`list_commands` 是命令集的 canonical interface。它返回当前启用的命令、描述、参数 schema、batch policy 与 `commandsVersion`；Agent 提示词和集成代码不应复制这些 metadata。常用入口包括 `ping`、`list_commands`、`get_hierarchy`、`create_object`、`batch`、`run_tests` 与 `get_test_result`。
+以上列表仅用于包能力概览。`list_commands` 仍是命令集的 canonical interface：它返回当前启用的命令、描述、参数 schema、batch policy 与 `commandsVersion`；Agent 提示词和集成代码不应复制这些 metadata。
 
 源码导航：`Channel/` 负责文件 exchange，`Dispatch/` 负责命令发现与调用，`Commands/` 负责 Unity 操作，`Scene/` 负责可往返引用和序列化属性，`Testing/` 负责异步测试运行。
 
@@ -110,12 +116,12 @@ public sealed class SayHelloHandler : ICommandHandler
     public string Group => "Custom";        // 窗口里的功能分组
     public bool CanDisable => true;
     public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
-    public object Execute(JObject @params) => new { greeting = "hi " + @params?["name"]?.Value<string>() };
+    public async CommandTask<object> ExecuteAsync(JObject @params) => new { greeting = "hi " + @params?["name"]?.Value<string>() };
     public JObject ParamsSchema { get; } = new JObject(); // 无参返回空 {}
 }
 ```
 
-`ICommandHandler` 实现经反射 / `TypeCache` 自动注册,无需手动接线或注册特性。成员:`Command`(唯一名)、`Description`、`Group`(窗口分组)、`CanDisable`、`BatchMode`、`Execute`、`ParamsSchema`。`BatchMode` 可选 `NotAllowed`、`Allowed` 或 `AllowedWithUndoCollapse`。抛 `CommandException(code, message)` 返回带类型的错误。
+`ICommandHandler` 实现经反射 / `TypeCache` 自动注册,无需手动接线或注册特性。成员:`Command`(唯一名)、`Description`、`Group`(窗口分组)、`CanDisable`、`BatchMode`、`ExecuteAsync`、`ParamsSchema`。`ExecuteAsync` 返回 `CommandTask<object>` 并支持普通 `async`/`await`。`BatchMode` 可选 `NotAllowed`、`Allowed` 或 `AllowedWithUndoCollapse`。抛 `CommandException(code, message)` 返回带类型的错误。
 
 当前扩展 Seam 只有 `ICommandHandler`;包不维护 `extension.json` 本地安装/卸载协议。请通过 UPM 或工程程序集添加、移除扩展代码。
 

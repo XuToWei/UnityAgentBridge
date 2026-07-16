@@ -22,7 +22,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
 
-        public object Execute(JObject @params)
+        public async CommandTask<object> ExecuteAsync(JObject @params)
         {
             var maxDepth = @params?["maxDepth"]?.ToObject<int?>() ?? DefaultMaxDepth;
             if (maxDepth < -1)

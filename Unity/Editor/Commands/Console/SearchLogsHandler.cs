@@ -31,7 +31,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
 
-        public object Execute(JObject @params)
+        public async CommandTask<object> ExecuteAsync(JObject @params)
         {
             var query = @params?["query"]?.Value<string>();
             var useRegex = @params?["regex"]?.ToObject<bool?>() ?? false;

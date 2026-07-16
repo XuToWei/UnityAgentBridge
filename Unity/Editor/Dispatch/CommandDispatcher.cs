@@ -11,11 +11,13 @@ namespace AgentBridge
     {
         private const string BatchCommandNotAllowed = "BATCH_COMMAND_NOT_ALLOWED";
 
-        internal static Response Dispatch(Request request)
+        internal static async CommandTask<Response> DispatchAsync(Request request)
         {
             if (request == null)
             {
-                return Error(ErrorCodes.InternalError, "ArgumentNullException: request is required");
+                return Error(
+                    ErrorCodes.InternalError,
+                    "ArgumentNullException: request is required");
             }
 
             if (!TryPrepare(
@@ -28,7 +30,7 @@ namespace AgentBridge
                 return error;
             }
 
-            return Dispatch(prepared);
+            return await DispatchAsync(prepared);
         }
 
         /// <summary>
@@ -84,11 +86,11 @@ namespace AgentBridge
         }
 
         /// <summary>仅执行已准备调用并统一转换 handler 错误,不重复预检。</summary>
-        internal static Response Dispatch(PreparedCommand prepared)
+        internal static async CommandTask<Response> DispatchAsync(PreparedCommand prepared)
         {
             try
             {
-                var result = prepared.Execute();
+                var result = await prepared.ExecuteAsync();
                 return Ok(result);
             }
             catch (CommandException ce)
@@ -158,9 +160,9 @@ namespace AgentBridge
         internal string Command { get; }
         internal bool SupportsUndoCollapse { get; }
 
-        internal object Execute()
+        internal CommandTask<object> ExecuteAsync()
         {
-            return m_Handler.Execute(m_Params);
+            return m_Handler.ExecuteAsync(m_Params);
         }
     }
 }

@@ -55,15 +55,21 @@ Responses are capped at a fixed 1 MiB of UTF-8. An oversized command result is r
 
 ## Built-in commands
 
-The package covers these capability groups:
+The package currently includes these built-in commands, grouped by `ICommandHandler.Group`:
 
-- **Discovery and inspection** — connectivity, command metadata, hierarchy, objects, selection, scenes, assets, dependencies, Console, compilation, and test results.
-- **Scene and Play Mode control** — open/save/close/activate scenes, play/stop, pause/resume/step, Game View resolution, and captures.
-- **Scene mutation** — create/update/delete objects, components, serialized properties, selection, framing, Prefabs, Undo/Redo, menus, and non-atomic batches.
-- **Asset mutation** — create/import/move/delete assets, edit importer properties, refresh, and request recompilation.
-- **Testing** — start filtered EditMode or PlayMode runs and poll bounded results.
+- **Meta** — `ping`, `list_commands`
+- **Inspection** — `get_hierarchy`, `get_object`, `get_selection`, `get_asset`, `get_asset_dependencies`, `list_assets`
+- **Scenes** — `list_scenes`, `open_scene`, `save_scene`, `close_scene`, `set_active_scene`
+- **Mutation** — `create_object`, `update_object`, `delete_object`, `add_component`, `remove_component`, `set_property`, `set_selection`, `frame_object`, `set_game_view_resolution`, `invoke_menu`, `undo`, `redo`, `batch`
+- **Prefab** — `prefab`
+- **Assets** — `create_asset`, `import_asset`, `move_asset`, `delete_asset`, `set_importer_property`, `refresh`
+- **PlayMode** — `play_scene`, `pause`, `resume`, `step`
+- **Capture** — `capture_game_view`, `capture_scene_view`
+- **Console** — `search_logs`, `clear_logs`
+- **Compilation** — `recompile`, `get_compile_result`
+- **Testing** — `run_tests`, `get_test_result`
 
-`list_commands` is the canonical command interface. It returns the live enabled command set, descriptions, parameter schemas, batch policies, and `commandsVersion`; do not copy that metadata into an agent prompt or integration. Typical entry points are `ping`, `list_commands`, `get_hierarchy`, `create_object`, `batch`, `run_tests`, and `get_test_result`.
+This list is a package overview. `list_commands` remains the canonical command interface: it returns the live enabled command set, descriptions, parameter schemas, batch policies, and `commandsVersion`; do not copy that metadata into an agent prompt or integration.
 
 Source map: `Channel/` owns the file exchange, `Dispatch/` owns command discovery and invocation, `Commands/` owns Unity operations, `Scene/` owns round-trippable references and serialized properties, and `Testing/` owns asynchronous test runs.
 
@@ -111,12 +117,12 @@ public sealed class SayHelloHandler : ICommandHandler
     public string Group => "Custom";        // function group shown in the window
     public bool CanDisable => true;
     public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
-    public object Execute(JObject @params) => new { greeting = "hi " + @params?["name"]?.Value<string>() };
+    public async CommandTask<object> ExecuteAsync(JObject @params) => new { greeting = "hi " + @params?["name"]?.Value<string>() };
     public JObject ParamsSchema { get; } = new JObject(); // {} when no params
 }
 ```
 
-`ICommandHandler` implementations are auto-registered via reflection / `TypeCache` — no manual wiring and no registration attribute. Members: `Command` (unique name), `Description`, `Group` (window grouping), `CanDisable`, `BatchMode`, `Execute`, and `ParamsSchema`. Choose `NotAllowed`, `Allowed`, or `AllowedWithUndoCollapse` for `BatchMode`. Throw `CommandException(code, message)` to return a typed error.
+`ICommandHandler` implementations are auto-registered via reflection / `TypeCache` — no manual wiring and no registration attribute. Members: `Command` (unique name), `Description`, `Group` (window grouping), `CanDisable`, `BatchMode`, `ExecuteAsync`, and `ParamsSchema`. `ExecuteAsync` returns `CommandTask<object>` and may use normal `async`/`await`. Choose `NotAllowed`, `Allowed`, or `AllowedWithUndoCollapse` for `BatchMode`. Throw `CommandException(code, message)` to return a typed error.
 
 `ICommandHandler` is the only extension seam. The package does not maintain a local `extension.json` install/uninstall protocol; add or remove extension code through UPM or project assemblies.
 

@@ -16,7 +16,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.NotAllowed;
 
-        public object Execute(JObject @params)
+        public async CommandTask<object> ExecuteAsync(JObject @params)
         {
             var path = AssetSupport.RequireAssetChildPath(@params?["path"]?.Value<string>());
             var permanent = @params?["permanent"]?.Value<bool>() ?? false;

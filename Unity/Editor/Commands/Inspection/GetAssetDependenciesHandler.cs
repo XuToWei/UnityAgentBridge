@@ -14,7 +14,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
 
-        public object Execute(JObject @params)
+        public async CommandTask<object> ExecuteAsync(JObject @params)
         {
             var path = AssetReadSupport.Resolve(@params, true);
             var recursive = SceneCommandSupport.ReadBool(@params, "recursive", true);
