@@ -711,6 +711,8 @@ Invoke-TestCase "testing.get_test_result.missing" {
 $missingTransform = @{ object = @{ instanceId = 2147483647 }; type = "UnityEngine.Transform"; index = 0 }
 Invoke-BridgeErrorCases @(
     @{ CaseId = "capture.invalid_file_name"; Command = "capture_game_view"; Params = @{ fileName = "../escape.png" }; ExpectedCode = "INVALID_PARAMS"; IdPrefix = "capture-bad" }
+    @{ CaseId = "capture.invalid_count"; Command = "capture_game_view"; Params = @{ count = 0 }; ExpectedCode = "INVALID_PARAMS"; IdPrefix = "capture-count-bad" }
+    @{ CaseId = "capture.invalid_interval"; Command = "capture_game_view"; Params = @{ intervalMs = -1 }; ExpectedCode = "INVALID_PARAMS"; IdPrefix = "capture-interval-bad" }
     @{ CaseId = "capture.scene_view.invalid_file_name"; Command = "capture_scene_view"; Params = @{ fileName = "../escape.png" }; ExpectedCode = "INVALID_PARAMS"; IdPrefix = "scene-capture-bad" }
     @{ CaseId = "mutation.create_object.invalid_kind"; Command = "create_object"; Params = @{ kind = "invalid" }; ExpectedCode = "INVALID_PARAMS"; IdPrefix = "create-object-bad" }
     @{ CaseId = "mutation.create_object.invalid_primitive_numeric"; Command = "create_object"; Params = @{ kind = "primitive"; primitive = "999" }; ExpectedCode = "INVALID_PARAMS"; IdPrefix = "create-primitive-bad" }
@@ -840,6 +842,7 @@ if ($Suite -ne "Baseline") {
     $script:SceneComponentRef = $null
     $script:AssetRoot = "Assets/$fixtureName"
     $script:ScreenshotPath = $null
+    $script:SequenceScreenshotPaths = @()
     $script:SceneViewScreenshotPath = $null
     $script:DirtyScenesBeforePlay = @()
     $script:UxBackgroundRef = $null
@@ -2623,12 +2626,38 @@ if ($Suite -ne "Baseline") {
         return $exchange
     }
 
+    $sequenceScreenshotName = "agentbridge_sequence_$fixtureId.png"
+    Invoke-TestCase "capture.game_view.sequence" {
+        $exchange = Invoke-BridgeRequest "capture_game_view" @{
+            fileName = $sequenceScreenshotName
+            count = 3
+            intervalMs = 10
+        } "capture-sequence"
+        Assert-Ok $exchange
+        Assert-Equal ([int]$exchange.Response.result.count) 3 "sequence capture count mismatch"
+        Assert-Equal ([int]$exchange.Response.result.intervalMs) 10 "sequence capture interval mismatch"
+        $captures = @($exchange.Response.result.captures)
+        Assert-Equal $captures.Count 3 "sequence capture result count mismatch"
+        $script:SequenceScreenshotPaths = @($captures | ForEach-Object { [string]$_.path })
+        for ($i = 0; $i -lt $captures.Count; $i++) {
+            $expectedName = "agentbridge_sequence_{0}_{1:D3}.png" -f $fixtureId, ($i + 1)
+            Assert-Equal ([string]$captures[$i].fileName) $expectedName "sequence file name mismatch"
+            Assert-True (Test-Path -LiteralPath $script:SequenceScreenshotPaths[$i]) "sequence screenshot $i was not created"
+            Assert-True ([long]$captures[$i].fileByteLength -gt 0) "sequence screenshot $i is empty"
+        }
+        return $exchange
+    }
+
     Invoke-TestCase "capture.cleanup" {
         $path = if ([string]::IsNullOrWhiteSpace($script:ScreenshotPath)) {
             Join-Path (Join-Path $bridgeRoot "screenshots") $screenshotName
         } else { $script:ScreenshotPath }
         if (Test-Path -LiteralPath $path) { [IO.File]::Delete($path) }
         Assert-True (-not (Test-Path -LiteralPath $path)) "screenshot cleanup failed"
+        foreach ($sequencePath in $script:SequenceScreenshotPaths) {
+            if (Test-Path -LiteralPath $sequencePath) { [IO.File]::Delete($sequencePath) }
+            Assert-True (-not (Test-Path -LiteralPath $sequencePath)) "sequence screenshot cleanup failed"
+        }
         return $null
     }
 

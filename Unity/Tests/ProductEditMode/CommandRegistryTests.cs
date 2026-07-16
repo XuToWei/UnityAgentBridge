@@ -206,6 +206,47 @@ namespace AgentBridge.Tests.ProductEditMode
             }
         }
 
+        [TestCase("capture.png", 0, 2, "capture_001.png")]
+        [TestCase("capture.png", 11, 12, "capture_012.png")]
+        [TestCase("capture.png", 0, 1, "capture.png")]
+        public void CaptureGameView_SequenceFileNameIsStable(
+            string fileName,
+            int index,
+            int count,
+            string expected)
+        {
+            Assert.That(
+                CaptureGameViewHandler.BuildSequenceFileName(fileName, index, count),
+                Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void CaptureGameView_ValidatesSequenceParamsDuringPreparation()
+        {
+            Assert.That(CommandDispatcher.TryPrepare(
+                "capture_game_view",
+                new JObject { ["count"] = 3, ["intervalMs"] = 250 },
+                CommandInvocationPolicy.Single,
+                out _,
+                out var validError), Is.True, validError?.Error?.Message);
+
+            Assert.That(CommandDispatcher.TryPrepare(
+                "capture_game_view",
+                new JObject { ["count"] = 0 },
+                CommandInvocationPolicy.Single,
+                out _,
+                out var countError), Is.False);
+            Assert.That(countError.Error.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+
+            Assert.That(CommandDispatcher.TryPrepare(
+                "capture_game_view",
+                new JObject { ["intervalMs"] = -1 },
+                CommandInvocationPolicy.Single,
+                out _,
+                out var intervalError), Is.False);
+            Assert.That(intervalError.Error.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+        }
+
         [Test]
         public CommandTask PreparedBatchInvocation_DoesNotRepeatSchemaValidationAtExecution()
         {

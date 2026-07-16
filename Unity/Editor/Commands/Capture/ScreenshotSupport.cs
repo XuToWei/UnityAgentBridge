@@ -86,7 +86,7 @@ namespace AgentBridge
             }
         }
 
-        private static string ResolveFileName(string requested, string prefix)
+        internal static string ResolveFileName(string requested, string prefix)
         {
             if (requested == null)
             {

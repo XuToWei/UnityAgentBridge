@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Reflection;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
@@ -9,7 +10,7 @@ namespace AgentBridge
 {
     /// <summary>
     /// capture_game_view(只读):捕获当前 Game 视图为 PNG,写入 .agentbridge/screenshots 并返回文件路径。
-    /// params 可选:fileName(纯文件名,缺省自动生成)/overwrite(同名时是否覆盖,默认 false)。
+    /// params 可选:fileName/overwrite/count/intervalMs；多张截图按间隔顺序捕获。
     /// </summary>
     public sealed class CaptureGameViewHandler : ICommandHandler
     {
@@ -20,7 +21,7 @@ namespace AgentBridge
         public string Command => "capture_game_view";
 
         public string Description =>
-            "捕获当前 Game 视图为 PNG,写入 .agentbridge/screenshots,返回 path/relativePath/fileName/format/width/height/fileByteLength";
+            "捕获当前 Game 视图为 PNG;支持 fileName/overwrite 和 count/intervalMs 连续截图,写入 .agentbridge/screenshots;单张返回 path/relativePath/fileName/format/width/height/fileByteLength,多张返回 count/intervalMs/captures[]";
 
         public string Group => "Capture";
         public bool CanDisable => true;
@@ -28,18 +29,86 @@ namespace AgentBridge
 
         public async CommandTask<object> ExecuteAsync(JObject @params)
         {
-            var target = ScreenshotSupport.Prepare(@params, "game_view");
-            var capture = CaptureAndWritePng(target);
+            var count = @params?["count"]?.Value<int>() ?? 1;
+            var intervalMs = @params?["intervalMs"]?.Value<int>() ?? 0;
+            var targets = PrepareTargets(@params, count);
+
+            if (count == 1)
+            {
+                return Capture(targets[0]);
+            }
+
+            var captures = new JArray();
+            for (var index = 0; index < targets.Count; index++)
+            {
+                if (index > 0)
+                {
+                    await CommandTask.Delay(intervalMs);
+                }
+                captures.Add(Capture(targets[index]));
+            }
 
             return new
             {
-                path = target.Path,
-                relativePath = target.RelativePath,
-                fileName = target.FileName,
-                format = Format,
-                width = capture.Width,
-                height = capture.Height,
-                fileByteLength = capture.FileByteLength
+                count,
+                intervalMs,
+                captures
+            };
+        }
+
+        private static List<ScreenshotSupport.Target> PrepareTargets(
+            JObject @params,
+            int count)
+        {
+            var targets = new List<ScreenshotSupport.Target>(count);
+            var requested = @params?["fileName"]?.Value<string>();
+            var normalized = requested == null
+                ? null
+                : ScreenshotSupport.ResolveFileName(requested, "game_view");
+
+            for (var index = 0; index < count; index++)
+            {
+                var captureParams = (JObject)(@params ?? new JObject()).DeepClone();
+                if (normalized != null && count > 1)
+                {
+                    captureParams["fileName"] = BuildSequenceFileName(
+                        normalized,
+                        index,
+                        count);
+                }
+                targets.Add(ScreenshotSupport.Prepare(captureParams, "game_view"));
+            }
+            return targets;
+        }
+
+        internal static string BuildSequenceFileName(
+            string fileName,
+            int index,
+            int count)
+        {
+            if (count <= 1)
+            {
+                return fileName;
+            }
+
+            var extension = Path.GetExtension(fileName);
+            var stem = Path.GetFileNameWithoutExtension(fileName);
+            var digits = System.Math.Max(3, count.ToString().Length);
+            return $"{stem}_{(index + 1).ToString("D" + digits)}{extension}";
+        }
+
+        private static JObject Capture(ScreenshotSupport.Target target)
+        {
+            var capture = CaptureAndWritePng(target);
+            return new JObject
+            {
+                ["path"] = target.Path,
+                ["relativePath"] = target.RelativePath,
+                ["fileName"] = target.FileName,
+                ["format"] = Format,
+                ["width"] = capture.Width,
+                ["height"] = capture.Height,
+                ["fileByteLength"] = capture.FileByteLength
             };
         }
 
@@ -292,7 +361,9 @@ namespace AgentBridge
   ""type"": ""object"",
   ""properties"": {
     ""fileName"": { ""type"": ""string"", ""description"": ""可选 PNG 文件名;只能是文件名本身,不能包含目录或路径分隔符;缺省自动生成唯一文件名。"" },
-    ""overwrite"": { ""type"": ""boolean"", ""description"": ""fileName 已存在时是否覆盖,默认 false。"" }
+    ""overwrite"": { ""type"": ""boolean"", ""description"": ""fileName 已存在时是否覆盖,默认 false。"" },
+    ""count"": { ""type"": ""integer"", ""minimum"": 1, ""maximum"": 100, ""default"": 1, ""description"": ""截图张数；大于 1 时按顺序返回 captures。"" },
+    ""intervalMs"": { ""type"": ""integer"", ""minimum"": 0, ""maximum"": 60000, ""default"": 0, ""description"": ""相邻截图的等待毫秒数；count=1 时忽略。"" }
   }
 }");
 
