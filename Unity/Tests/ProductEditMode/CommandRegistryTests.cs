@@ -27,6 +27,22 @@ namespace AgentBridge.Tests.ProductEditMode
             CommandToggle.SetEnabledBulk(m_OriginalDisabled, false);
         }
 
+        [TestCase(true, true, "命令 ▲")]
+        [TestCase(true, false, "命令 ▼")]
+        [TestCase(false, true, "命令")]
+        [TestCase(false, false, "命令")]
+        public void CommandWindowSortHeader_ShowsDirectionOnlyWhenActive(
+            bool active,
+            bool ascending,
+            string expected)
+        {
+            var content = AgentBridgeWindow.SortHeaderContent(
+                "命令", active, ascending, "排序");
+
+            Assert.That(content.text, Is.EqualTo(expected));
+            Assert.That(content.tooltip, Is.EqualTo("排序"));
+        }
+
         [Test]
         public void PublicSchemaMutation_DoesNotChangeRegistrationSnapshot()
         {

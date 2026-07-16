@@ -456,17 +456,20 @@ namespace AgentBridge
             using (new EditorGUILayout.HorizontalScope())
             {
                 GUILayout.Space(ListLeadingSpaceWidth);
-                if (GUILayout.Button(SortHeaderContent("启用", m_EnabledSortAscending, "点击按启用状态升序/降序排序"),
+                if (GUILayout.Button(SortHeaderContent("启用", m_CommandSortColumn == CommandSortColumn.Enabled,
+                        m_EnabledSortAscending, "点击按启用状态升序/降序排序"),
                     m_SortHeaderStyle, GUILayout.Width(CommandEnabledColumnWidth)))
                 {
                     ToggleCommandSort(CommandSortColumn.Enabled);
                 }
-                if (GUILayout.Button(SortHeaderContent("命令", m_NameSortAscending, "点击按命令名升序/降序排序"),
+                if (GUILayout.Button(SortHeaderContent("命令", m_CommandSortColumn == CommandSortColumn.Name,
+                        m_NameSortAscending, "点击按命令名升序/降序排序"),
                     m_SortHeaderStyle, GUILayout.Width(CommandNameColumnWidth)))
                 {
                     ToggleCommandSort(CommandSortColumn.Name);
                 }
-                if (GUILayout.Button(SortHeaderContent("分组", m_GroupSortAscending, "点击按分组升序/降序排序"),
+                if (GUILayout.Button(SortHeaderContent("分组", m_CommandSortColumn == CommandSortColumn.Group,
+                        m_GroupSortAscending, "点击按分组升序/降序排序"),
                     m_SortHeaderStyle, GUILayout.Width(CommandGroupColumnWidth)))
                 {
                     ToggleCommandSort(CommandSortColumn.Group);
@@ -873,9 +876,13 @@ namespace AgentBridge
             return path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         }
 
-        private static GUIContent SortHeaderContent(string label, bool ascending, string tooltip)
+        internal static GUIContent SortHeaderContent(
+            string label,
+            bool active,
+            bool ascending,
+            string tooltip)
         {
-            return new GUIContent($"{label}{(ascending ? " ▲" : " ▼")}", tooltip);
+            return new GUIContent(active ? $"{label}{(ascending ? " ▲" : " ▼")}" : label, tooltip);
         }
 
         private static bool TryUpsertManagedMarkdown(string current, string template, out string updated, out string error)
