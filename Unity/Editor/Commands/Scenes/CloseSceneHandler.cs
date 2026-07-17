@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using UnityEditor.SceneManagement;
 using UnityEngine.SceneManagement;
@@ -12,7 +13,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.NotAllowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
             SceneCommandSupport.RequireEditMode(Command);
             if (SceneManager.sceneCount <= 1)
@@ -47,7 +48,7 @@ namespace AgentBridge
                 throw new CommandException(SceneCommandErrorCodes.SceneCloseFailed,
                     $"关闭场景失败:'{label}'");
             }
-            return new
+            return Task.FromResult<object>(new
             {
                 closed = true,
                 scene = label,
@@ -56,7 +57,7 @@ namespace AgentBridge
                 wasDirty,
                 saved = unsaved.SavedScenes.Length == 1,
                 discarded = unsaved.DiscardedScenes.Length == 1
-            };
+            });
         }
 
         public JObject ParamsSchema { get; } = JObject.Parse(@"{

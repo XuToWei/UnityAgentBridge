@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using System.Linq;
 using Newtonsoft.Json.Linq;
 
@@ -15,9 +16,9 @@ namespace AgentBridge
         public bool CanDisable => false;
         public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
-            return new
+            return Task.FromResult<object>(new
             {
                 commands = CommandRegistry.GetAll().Select(i => new
                 {
@@ -28,7 +29,7 @@ namespace AgentBridge
                     supportsUndoCollapse = i.SupportsUndoCollapse
                 }).ToArray(),
                 commandsVersion = CommandRegistry.Version
-            };
+            });
         }
 
         public JObject ParamsSchema { get; } = new JObject(); // 无参 → 空 schema {}

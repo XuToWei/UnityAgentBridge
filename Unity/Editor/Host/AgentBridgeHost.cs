@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Threading.Tasks;
 using UnityEditor;
 using UnityEngine;
 
@@ -61,7 +62,7 @@ namespace AgentBridge
             _ = TickAsync();
         }
 
-        private static async CommandTask TickAsync()
+        private static async Task TickAsync()
         {
             if (s_IsProcessing)
             {

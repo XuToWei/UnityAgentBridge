@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -23,7 +24,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.AllowedWithUndoCollapse;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
             var persistent = ObjectMutationSupport.RequireStableState(Command);
             var supplied = UpdateFields.Where(name => @params?.Property(name) != null).ToArray();
@@ -143,7 +144,7 @@ namespace AgentBridge
                 }
             }
 
-            return new
+            return Task.FromResult<object>(new
             {
                 updated = true,
                 changed = changed.Distinct().ToArray(),
@@ -161,7 +162,7 @@ namespace AgentBridge
                     scale = DescribeVector(transform.localScale)
                 },
                 persistent
-            };
+            });
         }
 
         private static void ValidateScalarFields(JObject @params, GameObject go, GameObject parent,

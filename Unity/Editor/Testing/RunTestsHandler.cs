@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Text.RegularExpressions;
 using Newtonsoft.Json.Linq;
 
@@ -17,7 +18,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.NotAllowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
             var mode = (@params?["mode"]?.Value<string>() ?? "edit").ToLowerInvariant();
             if (mode != "edit" && mode != "play")
@@ -45,7 +46,7 @@ namespace AgentBridge
             var ifUnsaved = @params?["ifUnsaved"]?.Value<string>() ?? "error";
             var record = TestRunMonitor.Start(mode, filter, ifUnsaved);
 
-            return new
+            return Task.FromResult<object>(new
             {
                 runId = record.RunId,
                 frameworkRunId = record.FrameworkRunId,
@@ -54,7 +55,7 @@ namespace AgentBridge
                 startedAt = record.StartedAt,
                 savedScenes = record.SavedScenes,
                 filter = record.Filter
-            };
+            });
         }
 
         private static string[] ReadFilter(JObject @params, string propertyName)

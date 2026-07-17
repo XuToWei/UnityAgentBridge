@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEditor.Compilation;
@@ -17,7 +18,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.NotAllowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
             var current = CompileMonitor.Read();
             if (EditorApplication.isCompiling || current.Compiling)
@@ -36,13 +37,13 @@ namespace AgentBridge
                 throw new CommandException("RECOMPILE_REQUEST_FAILED",
                     $"请求脚本重编译失败:{ex.Message}");
             }
-            return new
+            return Task.FromResult<object>(new
             {
                 requested = true,
                 generation = state.Generation,
                 requestedGeneration = state.Generation,
                 requestedAt = state.RequestedAt
-            };
+            });
         }
 
         public JObject ParamsSchema { get; } = new JObject(); // 无参 → 空 schema {}

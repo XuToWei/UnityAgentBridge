@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
 
@@ -15,7 +16,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.NotAllowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
             var from = AssetSupport.RequireAssetChildPath(@params?["from"]?.Value<string>(), "from");
             var to = AssetSupport.RequireAssetChildPath(@params?["to"]?.Value<string>(), "to");
@@ -26,7 +27,7 @@ namespace AgentBridge
                 throw new CommandException(AssetErrorCodes.AssetMoveFailed, err);
             }
 
-            return new { from, to };
+            return Task.FromResult<object>(new { from, to });
         }
 
         public JObject ParamsSchema { get; } = JObject.Parse(

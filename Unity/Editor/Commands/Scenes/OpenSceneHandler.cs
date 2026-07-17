@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using System;
 using System.Linq;
 using Newtonsoft.Json.Linq;
@@ -14,7 +15,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.NotAllowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
             SceneCommandSupport.RequireEditMode(Command);
             var path = SceneCommandSupport.RequireSceneAssetPath(@params?["scenePath"]?.Value<string>());
@@ -34,7 +35,7 @@ namespace AgentBridge
                     throw new CommandException(SceneCommandErrorCodes.SceneSetActiveFailed,
                         $"无法激活已加载场景:'{path}'");
                 }
-                return new { opened = false, alreadyLoaded = true, scene = SceneCommandSupport.Describe(already) };
+                return Task.FromResult<object>(new { opened = false, alreadyLoaded = true, scene = SceneCommandSupport.Describe(already) });
             }
 
             if (mode == OpenSceneMode.Single && already.IsValid() && already.isLoaded)
@@ -62,7 +63,7 @@ namespace AgentBridge
                             $"切换 single 场景时无法关闭:'{SceneCommandSupport.Label(other)}'");
                     }
                 }
-                return new
+                return Task.FromResult<object>(new
                 {
                     opened = false,
                     alreadyLoaded = true,
@@ -72,7 +73,7 @@ namespace AgentBridge
                     discardedScenes = unsaved.DiscardedScenes,
                     closedScenes = otherLabels,
                     scene = SceneCommandSupport.Describe(already)
-                };
+                });
             }
 
             var unsavedScenes = SceneCommandSupport.HandleUnsavedScenes(
@@ -102,7 +103,7 @@ namespace AgentBridge
                     $"场景已打开但无法设为 active:'{path}'");
             }
 
-            return new
+            return Task.FromResult<object>(new
             {
                 opened = true,
                 alreadyLoaded = false,
@@ -111,7 +112,7 @@ namespace AgentBridge
                 savedScenes = unsavedScenes.SavedScenes,
                 discardedScenes = unsavedScenes.DiscardedScenes,
                 scene = SceneCommandSupport.Describe(opened)
-            };
+            });
         }
 
         public JObject ParamsSchema { get; } = JObject.Parse(@"{

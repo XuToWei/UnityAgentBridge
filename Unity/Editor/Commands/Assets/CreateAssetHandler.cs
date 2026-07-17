@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using System.IO;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
@@ -18,7 +19,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.NotAllowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
             var kind = (@params?["kind"]?.Value<string>() ?? "").ToLowerInvariant();
             var path = AssetSupport.RequireProjectPath(@params?["path"]?.Value<string>());
@@ -26,16 +27,17 @@ namespace AgentBridge
 
             switch (kind)
             {
-                case "folder": return CreateFolder(path);
+                case "folder": return Task.FromResult<object>(CreateFolder(path));
                 case "text":
                     if (@params?["content"] == null)
                     {
                         throw new CommandException(ErrorCodes.InvalidParams, "kind=text 需 content(可为空字符串)");
                     }
-                    return CreateText(AssetSupport.RequireFilePath(path), @params["content"].Value<string>(), overwrite);
+                    return Task.FromResult<object>(CreateText(AssetSupport.RequireFilePath(path),
+                        @params["content"].Value<string>(), overwrite));
                 case "scriptableobject":
-                    return CreateScriptableObject(AssetSupport.RequireFilePath(path),
-                        @params?["type"]?.Value<string>(), overwrite);
+                    return Task.FromResult<object>(CreateScriptableObject(AssetSupport.RequireFilePath(path),
+                        @params?["type"]?.Value<string>(), overwrite));
                 default:
                     throw new CommandException(ErrorCodes.InvalidParams,
                         $"未知 kind '{kind}'(应为 folder/text/scriptableObject)");

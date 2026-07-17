@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
 
@@ -16,7 +17,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.NotAllowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
             var path = @params?["path"]?.Value<string>();
             if (string.IsNullOrEmpty(path))
@@ -30,7 +31,7 @@ namespace AgentBridge
                     $"菜单项 '{path}' 不存在、被禁用或执行失败");
             }
 
-            return new { executed = true };
+            return Task.FromResult<object>(new { executed = true });
         }
 
         public JObject ParamsSchema { get; } = JObject.Parse(

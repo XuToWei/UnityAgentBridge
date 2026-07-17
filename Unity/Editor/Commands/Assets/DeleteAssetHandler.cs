@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
 
@@ -16,7 +17,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.NotAllowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
             var path = AssetSupport.RequireAssetChildPath(@params?["path"]?.Value<string>());
             var permanent = @params?["permanent"]?.Value<bool>() ?? false;
@@ -41,7 +42,7 @@ namespace AgentBridge
                     $"资产存在但删除失败(可能被占用、只读或受版本控制保护):'{path}'");
             }
 
-            return new { deleted = true, permanent };
+            return Task.FromResult<object>(new { deleted = true, permanent });
         }
 
         public JObject ParamsSchema { get; } = JObject.Parse(

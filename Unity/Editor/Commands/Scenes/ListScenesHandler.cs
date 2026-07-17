@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using System.Linq;
 using Newtonsoft.Json.Linq;
 using UnityEngine.SceneManagement;
@@ -12,11 +13,11 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
             var scenes = Enumerable.Range(0, SceneManager.sceneCount)
                 .Select(i => SceneCommandSupport.Describe(SceneManager.GetSceneAt(i))).ToArray();
-            return new { count = scenes.Length, scenes };
+            return Task.FromResult<object>(new { count = scenes.Length, scenes });
         }
 
         public JObject ParamsSchema { get; } = new JObject();

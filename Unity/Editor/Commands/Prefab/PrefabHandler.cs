@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using System;
 using System.IO;
 using Newtonsoft.Json.Linq;
@@ -14,7 +15,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.NotAllowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
             var action = @params?["action"]?.Value<string>();
             if (string.IsNullOrEmpty(action))
@@ -24,16 +25,16 @@ namespace AgentBridge
             if (action == "status")
             {
                 var statusObject = ResolveObject(@params);
-                return new { action, status = Describe(statusObject) };
+                return Task.FromResult<object>(new { action, status = Describe(statusObject) });
             }
 
             SceneCommandSupport.RequireEditMode($"{Command}.{action}");
             switch (action)
             {
-                case "create": return Create(@params);
-                case "apply": return Apply(@params);
-                case "revert": return Revert(@params);
-                case "unpack": return Unpack(@params);
+                case "create": return Task.FromResult<object>(Create(@params));
+                case "apply": return Task.FromResult<object>(Apply(@params));
+                case "revert": return Task.FromResult<object>(Revert(@params));
+                case "unpack": return Task.FromResult<object>(Unpack(@params));
                 default:
                     throw new CommandException(ErrorCodes.InvalidParams,
                         "action 只能是 status / create / apply / revert / unpack");

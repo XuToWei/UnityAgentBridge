@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 
 namespace AgentBridge
@@ -11,7 +12,7 @@ namespace AgentBridge
     {
         private const string BatchCommandNotAllowed = "BATCH_COMMAND_NOT_ALLOWED";
 
-        internal static async CommandTask<Response> DispatchAsync(Request request)
+        internal static async Task<Response> DispatchAsync(Request request)
         {
             if (request == null)
             {
@@ -86,7 +87,7 @@ namespace AgentBridge
         }
 
         /// <summary>仅执行已准备调用并统一转换 handler 错误,不重复预检。</summary>
-        internal static async CommandTask<Response> DispatchAsync(PreparedCommand prepared)
+        internal static async Task<Response> DispatchAsync(PreparedCommand prepared)
         {
             try
             {
@@ -160,7 +161,7 @@ namespace AgentBridge
         internal string Command { get; }
         internal bool SupportsUndoCollapse { get; }
 
-        internal CommandTask<object> ExecuteAsync()
+        internal Task<object> ExecuteAsync()
         {
             return m_Handler.ExecuteAsync(m_Params);
         }

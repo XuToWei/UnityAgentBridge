@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using System;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
@@ -13,7 +14,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.AllowedWithUndoCollapse;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
             var persistent = ObjectMutationSupport.RequireStableState(Command);
             var componentRef = @params?["component"]?.ToObject<ComponentRef>();
@@ -53,13 +54,13 @@ namespace AgentBridge
                 ObjectMutationSupport.MarkSceneDirty(go, persistent);
                 mutation.Complete();
             }
-            return new
+            return Task.FromResult<object>(new
             {
                 removed = true,
                 component = new { type = removedType, index = removedIndex },
                 @object = SceneObjectResolver.Describe(go),
                 persistent
-            };
+            });
         }
 
         public JObject ParamsSchema { get; } = new JObject

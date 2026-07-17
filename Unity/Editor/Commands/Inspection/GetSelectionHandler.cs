@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using System.Linq;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
@@ -13,7 +14,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
             var all = Selection.gameObjects;
             var sceneObjects = all.Where(go => go != null && !EditorUtility.IsPersistent(go) && go.scene.IsValid()).ToArray();
@@ -28,13 +29,13 @@ namespace AgentBridge
             var activeRef = active != null && !EditorUtility.IsPersistent(active) && active.scene.IsValid()
                 ? SceneObjectResolver.Describe(active)
                 : null;
-            return new
+            return Task.FromResult<object>(new
             {
                 count = selection.Length,
                 selection,
                 active = activeRef,
                 ignoredPersistentCount = all.Length - sceneObjects.Length
-            };
+            });
         }
 
         public JObject ParamsSchema { get; } =

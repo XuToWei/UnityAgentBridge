@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text;
+using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -56,8 +57,8 @@ namespace AgentBridge
         /// 避免并发调用。await 期间
         /// processing.json 保留，domain reload 后由新实例按 INTERRUPTED 恢复。
         /// </summary>
-        internal async CommandTask<bool> TryProcessOneAsync(
-            Func<Request, CommandTask<Response>> dispatch,
+        internal async Task<bool> TryProcessOneAsync(
+            Func<Request, Task<Response>> dispatch,
             Func<string> getCommandsVersion)
         {
             if (dispatch == null)

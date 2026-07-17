@@ -109,6 +109,7 @@ Scene-object responses use canonical round-trippable paths. Each GameObject name
 ```csharp
 using AgentBridge;
 using Newtonsoft.Json.Linq;
+using System.Threading.Tasks;
 
 public sealed class SayHelloHandler : ICommandHandler
 {
@@ -117,12 +118,15 @@ public sealed class SayHelloHandler : ICommandHandler
     public string Group => "Custom";        // function group shown in the window
     public bool CanDisable => true;
     public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
-    public async CommandTask<object> ExecuteAsync(JObject @params) => new { greeting = "hi " + @params?["name"]?.Value<string>() };
+    public Task<object> ExecuteAsync(JObject @params)
+    {
+        return Task.FromResult<object>(new { greeting = "hi " + @params?["name"]?.Value<string>() });
+    }
     public JObject ParamsSchema { get; } = new JObject(); // {} when no params
 }
 ```
 
-`ICommandHandler` implementations are auto-registered via reflection / `TypeCache` — no manual wiring and no registration attribute. Members: `Command` (unique name), `Description`, `Group` (window grouping), `CanDisable`, `BatchMode`, `ExecuteAsync`, and `ParamsSchema`. `ExecuteAsync` returns `CommandTask<object>` and may use normal `async`/`await`. Choose `NotAllowed`, `Allowed`, or `AllowedWithUndoCollapse` for `BatchMode`. Throw `CommandException(code, message)` to return a typed error.
+`ICommandHandler` implementations are auto-registered via reflection / `TypeCache` — no manual wiring and no registration attribute. Members: `Command` (unique name), `Description`, `Group` (window grouping), `CanDisable`, `BatchMode`, `ExecuteAsync`, and `ParamsSchema`. `ExecuteAsync` returns `Task<object>` and may use normal `async`/`await`. Choose `NotAllowed`, `Allowed`, or `AllowedWithUndoCollapse` for `BatchMode`. Throw `CommandException(code, message)` to return a typed error.
 
 `ICommandHandler` is the only extension seam. The package does not maintain a local `extension.json` install/uninstall protocol; add or remove extension code through UPM or project assemblies.
 

@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Linq;
 using Newtonsoft.Json.Linq;
@@ -22,7 +23,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
             var maxDepth = @params?["maxDepth"]?.ToObject<int?>() ?? DefaultMaxDepth;
             if (maxDepth < -1)
@@ -41,7 +42,7 @@ namespace AgentBridge
             if (rootRef != null)
             {
                 var go = SceneObjectResolver.ResolveObject(rootRef);
-                return new
+                return Task.FromResult<object>(new
                 {
                     scenes = new[]
                     {
@@ -58,7 +59,7 @@ namespace AgentBridge
                     ,
                     count = state.Count,
                     truncated = state.Truncated
-                };
+                });
             }
 
             var scenes = new List<object>();
@@ -86,7 +87,7 @@ namespace AgentBridge
                     break;
                 }
             }
-            return new { scenes, count = state.Count, truncated = state.Truncated };
+            return Task.FromResult<object>(new { scenes, count = state.Count, truncated = state.Truncated });
         }
 
         private static Node BuildTree(Transform root, int maxDepth, BuildState state, string rootPath)

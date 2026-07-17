@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using System;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
@@ -12,7 +13,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.NotAllowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
             SceneCommandSupport.RequireEditMode(Command);
             var observed = false;
@@ -30,7 +31,7 @@ namespace AgentBridge
             {
                 Undo.undoRedoPerformed -= callback;
             }
-            return new { requested = true, eventObserved = observed };
+            return Task.FromResult<object>(new { requested = true, eventObserved = observed });
         }
 
         public JObject ParamsSchema { get; } = new JObject();

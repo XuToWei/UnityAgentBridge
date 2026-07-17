@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -21,7 +22,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
             var type = @params?["type"]?.Value<string>();
             var folder = @params?["folder"]?.Value<string>();
@@ -67,7 +68,7 @@ namespace AgentBridge
             var truncated = selected.Length > limit;
             var assets = truncated ? selected.Take(limit).ToArray() : selected;
 
-            return new { assets, count = assets.Length, truncated };
+            return Task.FromResult<object>(new { assets, count = assets.Length, truncated });
         }
 
         public JObject ParamsSchema { get; } = JObject.Parse(@"{

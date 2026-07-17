@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
 
@@ -11,12 +12,12 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.NotAllowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
             PlayControlSupport.RequireActive(Command);
             var changed = EditorApplication.isPaused;
             EditorApplication.isPaused = false;
-            return new { paused = EditorApplication.isPaused, changed };
+            return Task.FromResult<object>(new { paused = EditorApplication.isPaused, changed });
         }
 
         public JObject ParamsSchema { get; } = new JObject();

@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using System;
 using System.Linq;
 using Newtonsoft.Json.Linq;
@@ -14,7 +15,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
             var path = AssetReadSupport.Resolve(@params, true);
             var recursive = SceneCommandSupport.ReadBool(@params, "recursive", true);
@@ -28,14 +29,14 @@ namespace AgentBridge
                 .Distinct(StringComparer.Ordinal)
                 .OrderBy(item => item, StringComparer.Ordinal)
                 .ToArray();
-            return new
+            return Task.FromResult<object>(new
             {
                 source = AssetReadSupport.Describe(path),
                 recursive,
                 total = dependencies.Length,
                 truncated = dependencies.Length > limit,
                 dependencies = dependencies.Take(limit).Select(AssetReadSupport.Describe).ToArray()
-            };
+            });
         }
 
         public JObject ParamsSchema { get; } = JObject.Parse(@"{

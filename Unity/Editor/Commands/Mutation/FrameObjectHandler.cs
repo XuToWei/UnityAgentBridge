@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using System;
 using System.Linq;
 using Newtonsoft.Json.Linq;
@@ -14,7 +15,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
             var go = SceneObjectResolver.ResolveObject(@params?["object"]?.ToObject<ObjectRef>());
             var view = SceneView.lastActiveSceneView ?? Resources.FindObjectsOfTypeAll<SceneView>().FirstOrDefault();
@@ -39,7 +40,7 @@ namespace AgentBridge
                 throw new CommandException("FRAME_OBJECT_FAILED",
                     $"SceneView 无法框选对象:'{go.name}'");
             }
-            return new
+            return Task.FromResult<object>(new
             {
                 framed = true,
                 instant,
@@ -49,7 +50,7 @@ namespace AgentBridge
                     center = new { x = bounds.center.x, y = bounds.center.y, z = bounds.center.z },
                     size = new { x = bounds.size.x, y = bounds.size.y, z = bounds.size.z }
                 }
-            };
+            });
         }
 
         private static Bounds CalculateBounds(GameObject go)

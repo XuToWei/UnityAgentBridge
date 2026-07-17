@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 
 namespace AgentBridge
@@ -16,7 +17,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
             var runId = @params?["runId"]?.Value<string>();
             var includePassed = @params?["includePassed"]?.ToObject<bool?>() ?? false;
@@ -50,7 +51,7 @@ namespace AgentBridge
                   (record.ResultState ?? "").StartsWith("Passed", StringComparison.OrdinalIgnoreCase)
                 : (bool?)null;
 
-            return new
+            return Task.FromResult<object>(new
             {
                 runId = record.RunId,
                 frameworkRunId = record.FrameworkRunId,
@@ -89,7 +90,7 @@ namespace AgentBridge
                     limit
                 },
                 results
-            };
+            });
         }
 
         public JObject ParamsSchema { get; } = JObject.Parse(@"{

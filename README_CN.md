@@ -108,6 +108,7 @@ agent <── .agentbridge/response.json <──rename── response.json.tmp
 ```csharp
 using AgentBridge;
 using Newtonsoft.Json.Linq;
+using System.Threading.Tasks;
 
 public sealed class SayHelloHandler : ICommandHandler
 {
@@ -116,12 +117,15 @@ public sealed class SayHelloHandler : ICommandHandler
     public string Group => "Custom";        // 窗口里的功能分组
     public bool CanDisable => true;
     public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
-    public async CommandTask<object> ExecuteAsync(JObject @params) => new { greeting = "hi " + @params?["name"]?.Value<string>() };
+    public Task<object> ExecuteAsync(JObject @params)
+    {
+        return Task.FromResult<object>(new { greeting = "hi " + @params?["name"]?.Value<string>() });
+    }
     public JObject ParamsSchema { get; } = new JObject(); // 无参返回空 {}
 }
 ```
 
-`ICommandHandler` 实现经反射 / `TypeCache` 自动注册,无需手动接线或注册特性。成员:`Command`(唯一名)、`Description`、`Group`(窗口分组)、`CanDisable`、`BatchMode`、`ExecuteAsync`、`ParamsSchema`。`ExecuteAsync` 返回 `CommandTask<object>` 并支持普通 `async`/`await`。`BatchMode` 可选 `NotAllowed`、`Allowed` 或 `AllowedWithUndoCollapse`。抛 `CommandException(code, message)` 返回带类型的错误。
+`ICommandHandler` 实现经反射 / `TypeCache` 自动注册,无需手动接线或注册特性。成员:`Command`(唯一名)、`Description`、`Group`(窗口分组)、`CanDisable`、`BatchMode`、`ExecuteAsync`、`ParamsSchema`。`ExecuteAsync` 返回 `Task<object>` 并支持普通 `async`/`await`。`BatchMode` 可选 `NotAllowed`、`Allowed` 或 `AllowedWithUndoCollapse`。抛 `CommandException(code, message)` 返回带类型的错误。
 
 当前扩展 Seam 只有 `ICommandHandler`;包不维护 `extension.json` 本地安装/卸载协议。请通过 UPM 或工程程序集添加、移除扩展代码。
 

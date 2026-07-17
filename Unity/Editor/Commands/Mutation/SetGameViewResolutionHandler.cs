@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 
 namespace AgentBridge
@@ -22,11 +23,11 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.NotAllowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
             if (@params?["restore"] is JObject restore)
             {
-                return Restore(restore);
+                return Task.FromResult<object>(Restore(restore));
             }
 
             var width = GetRequiredInt(@params, "width");
@@ -48,7 +49,7 @@ namespace AgentBridge
             var label = ResolveLabel(@params, width, height);
 
             var result = GameViewResolutionUtility.SetFixedResolution(width, height, label);
-            return new
+            return Task.FromResult<object>(new
             {
                 width = result.Width,
                 height = result.Height,
@@ -65,7 +66,7 @@ namespace AgentBridge
                     label = result.Restore.Label,
                     group = result.Restore.Group
                 }
-            };
+            });
         }
 
         private static object Restore(JObject restore)

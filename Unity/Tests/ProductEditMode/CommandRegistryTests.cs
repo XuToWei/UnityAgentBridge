@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using UnityEditor;
@@ -188,11 +189,11 @@ namespace AgentBridge.Tests.ProductEditMode
         }
 
         [Test]
-        public CommandTask PreparedInvocation_DoesNotRepeatDisabledCheckAtExecution()
+        public Task PreparedInvocation_DoesNotRepeatDisabledCheckAtExecution()
         {
             return RunAsync();
 
-            async CommandTask RunAsync()
+            async Task RunAsync()
             {
                 const string command = "get_selection";
                 CommandToggle.SetEnabled(command, true);
@@ -264,11 +265,11 @@ namespace AgentBridge.Tests.ProductEditMode
         }
 
         [Test]
-        public CommandTask PreparedBatchInvocation_DoesNotRepeatSchemaValidationAtExecution()
+        public Task PreparedBatchInvocation_DoesNotRepeatSchemaValidationAtExecution()
         {
             return RunAsync();
 
-            async CommandTask RunAsync()
+            async Task RunAsync()
             {
                 const string command = "get_selection";
                 CommandToggle.SetEnabled(command, true);
@@ -306,11 +307,11 @@ namespace AgentBridge.Tests.ProductEditMode
         }
 
         [Test]
-        public CommandTask BatchPreparation_RejectsRecursiveBatchBeforeExecution()
+        public Task BatchPreparation_RejectsRecursiveBatchBeforeExecution()
         {
             return RunAsync();
 
-            async CommandTask RunAsync()
+            async Task RunAsync()
             {
                 var response = await CommandDispatcher.DispatchAsync(new Request
                 {
@@ -342,11 +343,11 @@ namespace AgentBridge.Tests.ProductEditMode
         }
 
         [Test]
-        public CommandTask BatchHandler_PreflightsEveryStepBeforeExecutingAnyStep()
+        public Task BatchHandler_PreflightsEveryStepBeforeExecutingAnyStep()
         {
             return RunAsync();
 
-            async CommandTask RunAsync()
+            async Task RunAsync()
             {
                 var marker = new GameObject("__AgentBridgeBatchPreflightMarker");
                 var previousSelection = Selection.objects;
@@ -398,14 +399,14 @@ namespace AgentBridge.Tests.ProductEditMode
 
         [TestCase(true, 2, true)]
         [TestCase(false, 3, false)]
-        public CommandTask BatchHandler_PreservesResultOrderAndStopOnError(
+        public Task BatchHandler_PreservesResultOrderAndStopOnError(
             bool stopOnError,
             int expectedExecuted,
             bool expectedStopped)
         {
             return RunAsync();
 
-            async CommandTask RunAsync()
+            async Task RunAsync()
             {
                 var batchResult = await new BatchHandler().ExecuteAsync(new JObject
                 {
@@ -445,11 +446,11 @@ namespace AgentBridge.Tests.ProductEditMode
         }
 
         [Test]
-        public CommandTask Dispatch_NullRequest_ReturnsInternalError()
+        public Task Dispatch_NullRequest_ReturnsInternalError()
         {
             return RunAsync();
 
-            async CommandTask RunAsync()
+            async Task RunAsync()
             {
                 var response = await CommandDispatcher.DispatchAsync((Request)null);
 
@@ -508,9 +509,9 @@ namespace AgentBridge.Tests.ProductEditMode
         public bool CanDisable => false;
         public CommandBatchMode BatchMode => CommandBatchMode.NotAllowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
-            return null;
+            return Task.FromResult<object>(null);
         }
 
         public JObject ParamsSchema { get; } = new JObject();

@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using System;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
@@ -12,7 +13,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.NotAllowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
             SceneCommandSupport.RequireEditMode(Command);
             if (EditorApplication.isCompiling || EditorApplication.isUpdating)
@@ -74,7 +75,7 @@ namespace AgentBridge
                 throw new CommandException("ASSET_IMPORT_FAILED",
                     $"Importer 属性已修改但保存/重导入失败:'{path}':{ex.Message}");
             }
-            return new
+            return Task.FromResult<object>(new
             {
                 path,
                 guid = AssetDatabase.AssetPathToGUID(path),
@@ -82,7 +83,7 @@ namespace AgentBridge
                 propertyPath,
                 changed,
                 reimported
-            };
+            });
         }
 
         public JObject ParamsSchema { get; } = JObject.Parse(@"{

@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -14,7 +15,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.NotAllowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
             if (EditorApplication.isPlaying || EditorApplication.isPlayingOrWillChangePlaymode)
             {
@@ -44,7 +45,7 @@ namespace AgentBridge
             {
                 throw new CommandException("ASSET_REFRESH_FAILED", $"AssetDatabase.Refresh 失败:{ex.Message}");
             }
-            return new { saved = true, refreshed = true };
+            return Task.FromResult<object>(new { saved = true, refreshed = true });
         }
 
         public JObject ParamsSchema { get; } = JObject.Parse(@"{""type"":""object"",""properties"":{}}");

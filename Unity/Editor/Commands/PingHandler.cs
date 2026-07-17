@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEngine;
@@ -16,9 +17,9 @@ namespace AgentBridge
         public bool CanDisable => false;
         public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
-            return new
+            return Task.FromResult<object>(new
             {
                 message = "pong",
                 unityVersion = Application.unityVersion,
@@ -27,7 +28,7 @@ namespace AgentBridge
                 isPaused = EditorApplication.isPaused,
                 isCompiling = EditorApplication.isCompiling,
                 isUpdating = EditorApplication.isUpdating
-            };
+            });
         }
 
         public JObject ParamsSchema { get; } = new JObject(); // 无参 → 空 schema {}

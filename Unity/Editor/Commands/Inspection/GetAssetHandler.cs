@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using System;
 using System.Linq;
 using Newtonsoft.Json.Linq;
@@ -13,7 +14,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
             var path = AssetReadSupport.Resolve(@params);
             var main = AssetDatabase.LoadMainAssetAtPath(path);
@@ -35,7 +36,7 @@ namespace AgentBridge
                 .Select(entry => AssetReadSupport.DescribeObject(entry.asset)).ToArray();
             var importer = AssetImporter.GetAtPath(path);
 
-            return new
+            return Task.FromResult<object>(new
             {
                 asset = AssetReadSupport.Describe(path),
                 main = AssetReadSupport.DescribeObject(main),
@@ -51,7 +52,7 @@ namespace AgentBridge
                     assetPath = importer.assetPath,
                     properties = includeProperties ? PropertySerializer.SerializeTopLevel(importer) : null
                 }
-            };
+            });
         }
 
         private static long GetLocalId(UnityEngine.Object asset)

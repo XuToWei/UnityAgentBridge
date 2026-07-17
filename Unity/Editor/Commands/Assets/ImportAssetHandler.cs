@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using System.IO;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
@@ -17,7 +18,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.NotAllowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
             var source = @params?["source"]?.Value<string>();
             if (string.IsNullOrEmpty(source))
@@ -42,12 +43,12 @@ namespace AgentBridge
             try
             {
                 var published = AssetSupport.PublishExternalAsset(source, destination, overwrite);
-                return new
+                return Task.FromResult<object>(new
                 {
                     path = published.Path,
                     guid = published.Guid,
                     type = published.Type != null ? published.Type.FullName : null
-                };
+                });
             }
             catch (CommandException)
             {

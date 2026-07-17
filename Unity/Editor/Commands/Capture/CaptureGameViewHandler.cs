@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEngine;
@@ -27,7 +28,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public async Task<object> ExecuteAsync(JObject @params)
         {
             var count = @params?["count"]?.Value<int>() ?? 1;
             var intervalMs = @params?["intervalMs"]?.Value<int>() ?? 0;
@@ -43,7 +44,7 @@ namespace AgentBridge
             {
                 if (index > 0)
                 {
-                    await CommandTask.Delay(intervalMs);
+                    await TaskExtension.Delay(intervalMs);
                 }
                 captures.Add(Capture(targets[index]));
             }

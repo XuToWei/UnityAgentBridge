@@ -37,6 +37,7 @@ https://github.com/XuToWei/UnityAgentBridge.git?path=Unity
 ```csharp
 using AgentBridge;
 using Newtonsoft.Json.Linq;
+using System.Threading.Tasks;
 
 public sealed class MyHandler : ICommandHandler
 {
@@ -45,7 +46,10 @@ public sealed class MyHandler : ICommandHandler
     public string Group => "Custom";                      // 管理器窗口里的功能分组
     public bool CanDisable => true;                       // 是否允许在命令管理器禁用
     public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
-    public async CommandTask<object> ExecuteAsync(JObject @params) => new { ok = true };
+    public Task<object> ExecuteAsync(JObject @params)
+    {
+        return Task.FromResult<object>(new { ok = true });
+    }
     public JObject ParamsSchema { get; } = JObject.Parse(@"{ ""type"":""object"" }"); // 必选:参数 schema,无参返回 new JObject()(空 {})
     // 抛 CommandException(code, msg) 产生自定义错误码;抛其他异常 → HANDLER_EXCEPTION。
 }

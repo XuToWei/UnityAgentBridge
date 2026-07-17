@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using System;
 using System.Linq;
 using Newtonsoft.Json.Linq;
@@ -15,7 +16,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.NotAllowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
             SceneCommandSupport.RequireEditMode(Command);
             var all = SceneCommandSupport.ReadBool(@params, "all", false);
@@ -32,7 +33,7 @@ namespace AgentBridge
             {
                 var dirty = SceneCommandSupport.DirtyScenes();
                 var saved = SceneCommandSupport.SaveDirtyScenes(dirty);
-                return new { all = true, savedCount = saved.Length, saved };
+                return Task.FromResult<object>(new { all = true, savedCount = saved.Length, saved });
             }
 
             var scene = SceneCommandSupport.ResolveLoadedScene(@params);
@@ -68,14 +69,14 @@ namespace AgentBridge
                     $"保存场景失败:'{SceneCommandSupport.Label(scene)}'");
             }
 
-            return new
+            return Task.FromResult<object>(new
             {
                 all = false,
                 saved = true,
                 wasDirty,
                 previousPath,
                 scene = SceneCommandSupport.Describe(scene)
-            };
+            });
         }
 
         public JObject ParamsSchema { get; } = JObject.Parse(@"{

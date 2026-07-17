@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Linq;
 using Newtonsoft.Json.Linq;
@@ -17,7 +18,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
             var objRef = @params?["object"]?.ToObject<ObjectRef>();
             var go = SceneObjectResolver.ResolveObject(objRef);
@@ -52,11 +53,11 @@ namespace AgentBridge
                 });
             }
 
-            return new
+            return Task.FromResult<object>(new
             {
                 @object = objectInfo,
                 components = outComps
-            };
+            });
         }
 
         public JObject ParamsSchema { get; } = CreateParamsSchema();

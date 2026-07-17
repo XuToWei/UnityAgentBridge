@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -15,7 +16,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
             var refs = (JArray)@params["objects"];
             var resolved = new List<GameObject>(refs.Count);
@@ -52,14 +53,14 @@ namespace AgentBridge
                 ? resolved
                 : new[] { active }.Concat(resolved.Where(item => item != active)).ToList();
             Selection.objects = ordered.Cast<UnityEngine.Object>().ToArray();
-            return new
+            return Task.FromResult<object>(new
             {
                 count = Selection.gameObjects.Length,
                 selection = Selection.gameObjects.Select(SceneObjectResolver.Describe).ToArray(),
                 active = Selection.activeGameObject == null
                     ? null
                     : SceneObjectResolver.Describe(Selection.activeGameObject)
-            };
+            });
         }
 
         public JObject ParamsSchema { get; } = new JObject

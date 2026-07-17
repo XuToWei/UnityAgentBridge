@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using System.Linq;
 using Newtonsoft.Json.Linq;
 
@@ -16,12 +17,12 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
             var result = CompileMonitor.Read();
             var errors = result.Messages.Where(m => m.Type == "error").ToArray();
             var warnings = result.Messages.Where(m => m.Type == "warning").ToArray();
-            return new
+            return Task.FromResult<object>(new
             {
                 compiling = result.Compiling,
                 generation = result.Generation,
@@ -33,7 +34,7 @@ namespace AgentBridge
                 warningCount = warnings.Length,
                 errors,
                 warnings
-            };
+            });
         }
 
         public JObject ParamsSchema { get; } = new JObject(); // 无参 → 空 schema {}

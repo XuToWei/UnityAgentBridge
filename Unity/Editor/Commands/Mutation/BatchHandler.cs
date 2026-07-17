@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using System.Collections.Generic;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
@@ -12,7 +13,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.NotAllowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public async Task<object> ExecuteAsync(JObject @params)
         {
             var steps = (JArray)@params["steps"];
             var stopOnError = SceneCommandSupport.ReadBool(@params, "stopOnError", true);
@@ -72,7 +73,7 @@ namespace AgentBridge
                     {
                         result["result"] = JValue.CreateNull();
                         result["error"] = response.Error == null
-                            ? JValue.CreateNull()
+                            ? (JToken)JValue.CreateNull()
                             : JObject.FromObject(response.Error);
                         if (failedIndex < 0)
                         {

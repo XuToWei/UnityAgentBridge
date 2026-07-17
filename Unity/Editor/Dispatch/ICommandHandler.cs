@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 
 namespace AgentBridge
@@ -35,7 +36,7 @@ namespace AgentBridge
         /// 在 Unity 主线程异步执行。await 完成值序列化进 response.result。
         /// 抛 CommandException 用其 code;抛其他异常归 HANDLER_EXCEPTION。
         /// </summary>
-        CommandTask<object> ExecuteAsync(JObject @params);
+        Task<object> ExecuteAsync(JObject @params);
 
         /// <summary>
         /// params 的 JSON Schema,供 list_commands 返回给 AI。

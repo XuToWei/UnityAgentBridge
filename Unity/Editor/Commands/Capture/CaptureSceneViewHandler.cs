@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using System;
 using System.Linq;
 using Newtonsoft.Json.Linq;
@@ -15,7 +16,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
             var target = ScreenshotSupport.Prepare(@params, "scene_view");
             var view = SceneView.lastActiveSceneView ?? Resources.FindObjectsOfTypeAll<SceneView>().FirstOrDefault();
@@ -75,7 +76,7 @@ namespace AgentBridge
                 view.Repaint();
             }
 
-            return new
+            return Task.FromResult<object>(new
             {
                 path = target.Path,
                 relativePath = target.RelativePath,
@@ -84,7 +85,7 @@ namespace AgentBridge
                 width,
                 height,
                 fileByteLength
-            };
+            });
         }
 
         public JObject ParamsSchema { get; } = JObject.Parse(@"{

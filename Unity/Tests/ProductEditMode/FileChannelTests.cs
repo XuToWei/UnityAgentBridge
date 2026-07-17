@@ -109,7 +109,7 @@ namespace AgentBridge.Tests.ProductEditMode
             WriteRequest(RequestPath, "async");
             var completion = new TaskCompletionSource<bool>();
 
-            async CommandTask<Response> RunAsync(Request request)
+            async Task<Response> RunAsync(Request request)
             {
                 Assert.That(request.Id, Is.EqualTo("async"));
                 await completion.Task;
@@ -361,15 +361,14 @@ namespace AgentBridge.Tests.ProductEditMode
             File.WriteAllText(path, request.ToString(Newtonsoft.Json.Formatting.None));
         }
 
-        private static Func<Request, CommandTask<Response>> AsyncDispatch(
+        private static Func<Request, Task<Response>> AsyncDispatch(
             Func<Request, Response> dispatch)
         {
             return RunAsync;
 
-            async CommandTask<Response> RunAsync(Request request)
+            Task<Response> RunAsync(Request request)
             {
-                await Task.CompletedTask;
-                return dispatch(request);
+                return Task.FromResult(dispatch(request));
             }
         }
 

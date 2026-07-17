@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using UnityEngine.SceneManagement;
 
@@ -11,7 +12,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.NotAllowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
             SceneCommandSupport.RequireEditMode(Command);
             var scene = SceneCommandSupport.ResolveLoadedScene(@params, true);
@@ -22,12 +23,12 @@ namespace AgentBridge
                 throw new CommandException(SceneCommandErrorCodes.SceneSetActiveFailed,
                     $"无法激活场景:'{SceneCommandSupport.Label(scene)}'");
             }
-            return new
+            return Task.FromResult<object>(new
             {
                 changed,
                 previous = previous.IsValid() ? SceneCommandSupport.Label(previous) : null,
                 scene = SceneCommandSupport.Describe(scene)
-            };
+            });
         }
 
         public JObject ParamsSchema { get; } = JObject.Parse(@"{

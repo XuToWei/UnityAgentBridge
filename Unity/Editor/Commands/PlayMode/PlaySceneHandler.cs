@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using System;
 using System.IO;
 using Newtonsoft.Json.Linq;
@@ -25,11 +26,11 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.NotAllowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
             if (GetOptionalBool(@params, "stop", false))
             {
-                return RequestStopPlayMode();
+                return Task.FromResult<object>(RequestStopPlayMode());
             }
 
             if (EditorApplication.isPlaying)
@@ -63,7 +64,7 @@ namespace AgentBridge
 
             RequestPlayMode();
 
-            return new
+            return Task.FromResult<object>(new
             {
                 scene = new
                 {
@@ -91,7 +92,7 @@ namespace AgentBridge
                     savedScenes = unsaved.SavedScenes,
                     discardedScenes = unsaved.DiscardedScenes
                 }
-            };
+            });
         }
 
         private static object RequestStopPlayMode()

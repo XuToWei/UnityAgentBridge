@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -31,7 +32,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
             var query = @params?["query"]?.Value<string>();
             var useRegex = @params?["regex"]?.ToObject<bool?>() ?? false;
@@ -120,7 +121,7 @@ namespace AgentBridge
                 line = e.Line
             }).ToArray();
 
-            return new
+            return Task.FromResult<object>(new
             {
                 total,                   // Console 里总条目数
                 scanned = all.Count,     // 从最新开始实际扫描的条目数
@@ -128,7 +129,7 @@ namespace AgentBridge
                 matched = matched.Count, // 已扫描范围内命中过滤/搜索的条目数
                 truncated,               // 命中数超过 limit,已截断
                 entries
-            };
+            });
         }
 
         public JObject ParamsSchema { get; } = JObject.Parse(@"{

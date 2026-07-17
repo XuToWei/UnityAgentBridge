@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using System;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
@@ -19,7 +20,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.AllowedWithUndoCollapse;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
             var persistent = ObjectMutationSupport.RequireStableState(Command);
             var kind = (@params?["kind"]?.Value<string>() ?? "empty").ToLowerInvariant();
@@ -120,11 +121,11 @@ namespace AgentBridge
                 throw;
             }
 
-            return new
+            return Task.FromResult<object>(new
             {
                 @object = SceneObjectResolver.Describe(go),
                 persistent
-            };
+            });
         }
 
         private static void ApplyInitialState(

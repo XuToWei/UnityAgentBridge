@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 
 namespace AgentBridge
@@ -10,10 +11,10 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.NotAllowed;
 
-        public async CommandTask<object> ExecuteAsync(JObject @params)
+        public Task<object> ExecuteAsync(JObject @params)
         {
             var count = ConsoleLogReader.Clear();
-            return new { cleared = true, clearedCount = count };
+            return Task.FromResult<object>(new { cleared = true, clearedCount = count });
         }
 
         public JObject ParamsSchema { get; } = new JObject();
