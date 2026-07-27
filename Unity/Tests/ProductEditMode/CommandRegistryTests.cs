@@ -238,6 +238,40 @@ namespace AgentBridge.Tests.ProductEditMode
         }
 
         [Test]
+        public void ScreenshotSupport_FlipVerticallyReversesRows()
+        {
+            var texture = new Texture2D(2, 3, TextureFormat.RGBA32, false);
+            try
+            {
+                var bottom = new Color32(255, 0, 0, 255);
+                var middle = new Color32(0, 255, 0, 255);
+                var top = new Color32(0, 0, 255, 255);
+                texture.SetPixels32(new[]
+                {
+                    bottom, bottom,
+                    middle, middle,
+                    top, top
+                });
+
+                ScreenshotSupport.FlipVertically(texture);
+                texture.Apply(false, false);
+
+                CollectionAssert.AreEqual(
+                    new[]
+                    {
+                        top, top,
+                        middle, middle,
+                        bottom, bottom
+                    },
+                    texture.GetPixels32());
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(texture);
+            }
+        }
+
+        [Test]
         public void CaptureGameView_ValidatesSequenceParamsDuringPreparation()
         {
             Assert.That(CommandDispatcher.TryPrepare(

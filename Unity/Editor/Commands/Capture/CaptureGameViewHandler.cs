@@ -243,6 +243,13 @@ namespace AgentBridge
                 RenderTexture.active = renderTexture;
                 texture = new Texture2D(renderTexture.width, renderTexture.height, TextureFormat.RGBA32, false);
                 texture.ReadPixels(new Rect(0, 0, renderTexture.width, renderTexture.height), 0, 0, false);
+                // Game View's internal render texture is already vertically flipped on
+                // top-origin graphics APIs. ReadPixels preserves that row order, so normalize
+                // it before encoding to the top-down PNG convention.
+                if (SystemInfo.graphicsUVStartsAtTop)
+                {
+                    ScreenshotSupport.FlipVertically(texture);
+                }
                 texture.Apply(false, false);
                 return texture;
             }

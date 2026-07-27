@@ -71,6 +71,32 @@ namespace AgentBridge
             return Write(target, bytes);
         }
 
+        internal static void FlipVertically(Texture2D texture)
+        {
+            if (texture == null)
+            {
+                throw new ArgumentNullException(nameof(texture));
+            }
+
+            var width = texture.width;
+            var height = texture.height;
+            var pixels = texture.GetRawTextureData<Color32>();
+            for (var y = 0; y < height / 2; y++)
+            {
+                var oppositeY = height - y - 1;
+                var rowStart = y * width;
+                var oppositeRowStart = oppositeY * width;
+                for (var x = 0; x < width; x++)
+                {
+                    var index = rowStart + x;
+                    var oppositeIndex = oppositeRowStart + x;
+                    var pixel = pixels[index];
+                    pixels[index] = pixels[oppositeIndex];
+                    pixels[oppositeIndex] = pixel;
+                }
+            }
+        }
+
         public static void ValidateSize(
             int width,
             int height,
