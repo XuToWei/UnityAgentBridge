@@ -11,10 +11,10 @@ namespace AgentBridge
         private const long MaxPixels = 32 * 1024 * 1024;
         private const string DirectoryName = "screenshots";
         private const string AlreadyExistsError = "SCREENSHOT_ALREADY_EXISTS";
+        private const string CleanupFailedError = "SCREENSHOT_CLEANUP_FAILED";
 
         public static Target Prepare(JObject @params, string prefix)
         {
-            var overwrite = SceneCommandSupport.ReadBool(@params, "overwrite", false);
             var requested = @params?["fileName"]?.Value<string>();
             var fileName = ResolveFileName(requested, prefix);
             if (!Directory.Exists(BridgeSettings.RootDir))
@@ -29,19 +29,14 @@ namespace AgentBridge
             }
 
             var finalPath = Path.Combine(directory, fileName);
-            if (File.Exists(finalPath) && !overwrite)
-            {
-                throw new CommandException(AlreadyExistsError,
-                    $"截图文件已存在:'{finalPath}';如需覆盖请传 overwrite=true");
-            }
-            return new Target(fileName, finalPath, overwrite);
+            return new Target(fileName, finalPath);
         }
 
         public static long Write(Target target, byte[] bytes)
         {
             try
             {
-                AtomicFilePublisher.Publish(target.Path, target.Overwrite,
+                AtomicFilePublisher.Publish(target.Path, false,
                     temp => File.WriteAllBytes(temp, bytes));
             }
             catch (AtomicFileDestinationExistsException)
@@ -69,6 +64,61 @@ namespace AgentBridge
                 throw new CommandException(encodeErrorCode, encodeErrorMessage);
             }
             return Write(target, bytes);
+        }
+
+        internal static void CleanupPreviousScreenshots()
+        {
+            var directory = Path.Combine(BridgeSettings.RootDir, DirectoryName);
+            if (!Directory.Exists(directory))
+            {
+                return;
+            }
+
+            string[] files;
+            try
+            {
+                files = Directory.GetFiles(directory, "*", SearchOption.TopDirectoryOnly);
+            }
+            catch (DirectoryNotFoundException)
+            {
+                return;
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+            {
+                throw new CommandException(CleanupFailedError,
+                    $"无法枚举旧截图目录 '{directory}':{ex.Message}");
+            }
+
+            string failedPath = null;
+            Exception firstError = null;
+            foreach (var path in files)
+            {
+                var extension = Path.GetExtension(path);
+                if (!string.Equals(extension, ".png", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(extension, ".tmp", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    File.Delete(path);
+                }
+                catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+                {
+                    if (firstError == null)
+                    {
+                        failedPath = path;
+                        firstError = ex;
+                    }
+                }
+            }
+
+            if (firstError != null)
+            {
+                throw new CommandException(CleanupFailedError,
+                    $"无法删除旧截图 '{failedPath}':{firstError.Message}");
+            }
         }
 
         internal static void FlipVertically(Texture2D texture)
@@ -147,15 +197,13 @@ namespace AgentBridge
 
         internal readonly struct Target
         {
-            public Target(string fileName, string path, bool overwrite)
+            public Target(string fileName, string path)
             {
                 FileName = fileName;
                 Path = path;
-                Overwrite = overwrite;
             }
             public string FileName { get; }
             public string Path { get; }
-            public bool Overwrite { get; }
             public string RelativePath => $"{DirectoryName}/{FileName}";
         }
     }

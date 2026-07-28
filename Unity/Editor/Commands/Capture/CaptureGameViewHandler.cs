@@ -11,7 +11,8 @@ namespace AgentBridge
 {
     /// <summary>
     /// capture_game_view(只读):捕获当前 Game 视图为 PNG,写入 .agentbridge/screenshots 并返回文件路径。
-    /// params 可选:fileName/overwrite/count/intervalMs；多张截图按间隔顺序捕获。
+    /// 每条命令在开始捕获前清理旧截图；多张截图按间隔顺序捕获。
+    /// params 可选:fileName/count/intervalMs。
     /// </summary>
     public sealed class CaptureGameViewHandler : ICommandHandler
     {
@@ -22,7 +23,7 @@ namespace AgentBridge
         public string Command => "capture_game_view";
 
         public string Description =>
-            "捕获当前 Game 视图为 PNG;支持 fileName/overwrite 和 count/intervalMs 连续截图,写入 .agentbridge/screenshots;单张返回 path/relativePath/fileName/format/width/height/fileByteLength,多张返回 count/intervalMs/captures[]";
+            "捕获当前 Game 视图为 PNG;开始捕获前清理 .agentbridge/screenshots 中的旧截图;支持 fileName 和 count/intervalMs 连续截图;单张返回 path/relativePath/fileName/format/width/height/fileByteLength,多张返回 count/intervalMs/captures[]";
 
         public string Group => "Capture";
         public bool CanDisable => true;
@@ -33,6 +34,7 @@ namespace AgentBridge
             var count = @params?["count"]?.Value<int>() ?? 1;
             var intervalMs = @params?["intervalMs"]?.Value<int>() ?? 0;
             var targets = PrepareTargets(@params, count);
+            ScreenshotSupport.CleanupPreviousScreenshots();
 
             if (count == 1)
             {
@@ -369,7 +371,6 @@ namespace AgentBridge
   ""type"": ""object"",
   ""properties"": {
     ""fileName"": { ""type"": ""string"", ""description"": ""可选 PNG 文件名;只能是文件名本身,不能包含目录或路径分隔符;缺省自动生成唯一文件名。"" },
-    ""overwrite"": { ""type"": ""boolean"", ""description"": ""fileName 已存在时是否覆盖,默认 false。"" },
     ""count"": { ""type"": ""integer"", ""minimum"": 1, ""maximum"": 100, ""default"": 1, ""description"": ""截图张数；大于 1 时按顺序返回 captures。"" },
     ""intervalMs"": { ""type"": ""integer"", ""minimum"": 0, ""maximum"": 60000, ""default"": 0, ""description"": ""相邻截图的等待毫秒数；count=1 时忽略。"" }
   }

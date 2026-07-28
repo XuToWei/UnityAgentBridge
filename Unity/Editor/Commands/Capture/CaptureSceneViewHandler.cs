@@ -11,7 +11,7 @@ namespace AgentBridge
     {
         public string Command => "capture_scene_view";
         public string Description =>
-            "把已有 SceneView 相机内容渲染为 PNG(不含窗口 chrome/工具栏),写入 .agentbridge/screenshots,返回 path/relativePath/fileName/format/width/height/fileByteLength";
+            "把已有 SceneView 相机内容渲染为 PNG(不含窗口 chrome/工具栏),开始捕获前清理 .agentbridge/screenshots 中的旧截图,返回 path/relativePath/fileName/format/width/height/fileByteLength";
         public string Group => "Capture";
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
@@ -30,6 +30,7 @@ namespace AgentBridge
             var height = @params?["height"]?.Value<int>() ??
                          Mathf.Max(1, Mathf.RoundToInt(view.position.height * pixelsPerPoint));
             ScreenshotSupport.ValidateSize(width, height);
+            ScreenshotSupport.CleanupPreviousScreenshots();
 
             long fileByteLength;
             var camera = view.camera;
@@ -92,7 +93,6 @@ namespace AgentBridge
   ""type"": ""object"",
   ""properties"": {
     ""fileName"": { ""type"": ""string"" },
-    ""overwrite"": { ""type"": ""boolean"", ""default"": false },
     ""width"": { ""type"": ""integer"", ""minimum"": 1, ""maximum"": 8192 },
     ""height"": { ""type"": ""integer"", ""minimum"": 1, ""maximum"": 8192 }
   }

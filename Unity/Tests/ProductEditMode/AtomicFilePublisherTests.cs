@@ -178,7 +178,7 @@ namespace AgentBridge.Tests.ProductEditMode
         public void ScreenshotCollision_PreservesDomainErrorAndExistingFile()
         {
             File.WriteAllText(m_Destination, "before");
-            var target = new ScreenshotSupport.Target("published.txt", m_Destination, false);
+            var target = new ScreenshotSupport.Target("published.txt", m_Destination);
 
             var error = Assert.Throws<CommandException>(() =>
                 ScreenshotSupport.Write(target, new byte[] { 1, 2, 3 }));

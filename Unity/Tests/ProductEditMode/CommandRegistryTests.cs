@@ -272,6 +272,45 @@ namespace AgentBridge.Tests.ProductEditMode
         }
 
         [Test]
+        public void ScreenshotSupport_WritePngDoesNotCleanOtherScreenshots()
+        {
+            var directory = System.IO.Path.Combine(
+                System.IO.Path.GetTempPath(),
+                $"AgentBridgeScreenshotCleanup-{Guid.NewGuid():N}");
+            System.IO.Directory.CreateDirectory(directory);
+            var oldPath = System.IO.Path.Combine(directory, "old.png");
+            System.IO.File.WriteAllText(oldPath, "previous screenshot");
+            var texture = new Texture2D(1, 1, TextureFormat.RGBA32, false);
+            try
+            {
+                texture.SetPixel(0, 0, Color.red);
+                texture.Apply(false, false);
+                var targetPath = System.IO.Path.Combine(directory, "current.png");
+                var target = new ScreenshotSupport.Target(
+                    "current.png",
+                    targetPath);
+
+                var byteLength = ScreenshotSupport.WritePng(
+                    target,
+                    texture,
+                    "ENCODE_FAILED",
+                    "encode failed");
+
+                Assert.That(byteLength, Is.GreaterThan(0));
+                Assert.That(System.IO.File.Exists(targetPath), Is.True);
+                Assert.That(System.IO.File.Exists(oldPath), Is.True);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(texture);
+                if (System.IO.Directory.Exists(directory))
+                {
+                    System.IO.Directory.Delete(directory, true);
+                }
+            }
+        }
+
+        [Test]
         public void CaptureGameView_ValidatesSequenceParamsDuringPreparation()
         {
             Assert.That(CommandDispatcher.TryPrepare(
@@ -296,6 +335,25 @@ namespace AgentBridge.Tests.ProductEditMode
                 out _,
                 out var intervalError), Is.False);
             Assert.That(intervalError.Error.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+        }
+
+        [Test]
+        public void CaptureSchemas_DoNotExposeOverwrite()
+        {
+            var captures = CommandRegistry.GetRegistrations()
+                .Where(registration =>
+                    registration.Command == "capture_game_view" ||
+                    registration.Command == "capture_scene_view")
+                .ToArray();
+
+            Assert.That(captures, Has.Length.EqualTo(2));
+            foreach (var capture in captures)
+            {
+                Assert.That(capture.ParamsSchema["properties"]?["overwrite"], Is.Null,
+                    capture.Command);
+                Assert.That(capture.Description, Does.Not.Contain("overwrite"),
+                    capture.Command);
+            }
         }
 
         [Test]

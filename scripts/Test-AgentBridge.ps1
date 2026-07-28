@@ -2613,16 +2613,10 @@ if ($Suite -ne "Baseline") {
         return $exchange
     }
 
-    Invoke-TestCase "capture.reject_duplicate" {
+    Invoke-TestCase "capture.cleans_previous_same_name" {
         $exchange = Invoke-BridgeRequest "capture_game_view" @{ fileName = $screenshotName } "capture-duplicate"
-        Assert-Error $exchange "SCREENSHOT_ALREADY_EXISTS"
-        return $exchange
-    }
-
-    Invoke-TestCase "capture.overwrite" {
-        $exchange = Invoke-BridgeRequest "capture_game_view" @{ fileName = $screenshotName; overwrite = $true } "capture-overwrite"
         Assert-Ok $exchange
-        Assert-True ([long]$exchange.Response.result.fileByteLength -gt 0) "overwritten screenshot is empty"
+        Assert-True ([long]$exchange.Response.result.fileByteLength -gt 0) "replacement screenshot is empty"
         return $exchange
     }
 
@@ -2694,26 +2688,15 @@ if ($Suite -ne "Baseline") {
         return $exchange
     }
 
-    Invoke-TestCase "capture.scene_view.reject_duplicate" {
-        $exchange = Invoke-BridgeRequest "capture_scene_view" @{
-            fileName = $sceneViewScreenshotName
-            width = 128
-            height = 96
-        } "capture-scene-view-duplicate"
-        Assert-Error $exchange "SCREENSHOT_ALREADY_EXISTS"
-        return $exchange
-    }
-
-    Invoke-TestCase "capture.scene_view.overwrite" {
+    Invoke-TestCase "capture.scene_view.cleans_previous_same_name" {
         $exchange = Invoke-BridgeRequest "capture_scene_view" @{
             fileName = $sceneViewScreenshotName
             width = 64
             height = 64
-            overwrite = $true
-        } "capture-scene-view-overwrite"
+        } "capture-scene-view-duplicate"
         Assert-Ok $exchange
-        Assert-Equal ([int]$exchange.Response.result.width) 64 "overwritten SceneView capture width mismatch"
-        Assert-True ([long]$exchange.Response.result.fileByteLength -gt 0) "overwritten SceneView screenshot is empty"
+        Assert-Equal ([int]$exchange.Response.result.width) 64 "replacement SceneView capture width mismatch"
+        Assert-True ([long]$exchange.Response.result.fileByteLength -gt 0) "replacement SceneView screenshot is empty"
         return $exchange
     }
 

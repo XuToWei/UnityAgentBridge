@@ -69,6 +69,8 @@ The package currently includes these built-in commands, grouped by `ICommandHand
 - **Compilation** — `recompile`, `get_compile_result`
 - **Testing** — `run_tests`, `get_test_result`
 
+Each Capture command removes old screenshots and screenshot temp files from `.agentbridge/screenshots/` before capture starts. A capture sequence cleans once at the start of the sequence.
+
 This list is a package overview. `list_commands` remains the canonical command interface: it returns the live enabled command set, descriptions, parameter schemas, batch policies, and `commandsVersion`; do not copy that metadata into an agent prompt or integration.
 
 Source map: `Channel/` owns the file exchange, `Dispatch/` owns command discovery and invocation, `Commands/` owns Unity operations, `Scene/` owns round-trippable references and serialized properties, and `Testing/` owns asynchronous test runs.
