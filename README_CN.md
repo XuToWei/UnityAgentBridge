@@ -68,7 +68,7 @@ agent <── .agentbridge/response.json <──rename── response.json.tmp
 - **Compilation**——`recompile`、`get_compile_result`
 - **Testing**——`run_tests`、`get_test_result`
 
-每条 Capture 命令会在开始捕获前清理 `.agentbridge/screenshots/` 中的旧截图和截图临时文件；连续截图只在整批开始时清理一次。
+Capture 命令使用可配置 `quality`（默认 85）的 JPG 编码，并在开始捕获前清理 `.agentbridge/screenshots/` 中的旧截图和截图临时文件；连续截图只在整批开始时清理一次。
 
 以上列表仅用于包能力概览。`list_commands` 仍是命令集的 canonical interface：它返回当前启用的命令、描述、参数 schema、batch policy 与 `commandsVersion`；Agent 提示词和集成代码不应复制这些 metadata。
 

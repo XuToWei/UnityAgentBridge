@@ -11,7 +11,7 @@ namespace AgentBridge
     {
         public string Command => "capture_scene_view";
         public string Description =>
-            "把已有 SceneView 相机内容渲染为 PNG(不含窗口 chrome/工具栏),开始捕获前清理 .agentbridge/screenshots 中的旧截图,返回 path/relativePath/fileName/format/width/height/fileByteLength";
+            "把已有 SceneView 相机内容渲染为 JPG(不含窗口 chrome/工具栏),开始捕获前清理 .agentbridge/screenshots 中的旧截图,返回 path/relativePath/fileName/format/quality/width/height/fileByteLength";
         public string Group => "Capture";
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
@@ -19,6 +19,7 @@ namespace AgentBridge
         public Task<object> ExecuteAsync(JObject @params)
         {
             var target = ScreenshotSupport.Prepare(@params, "scene_view");
+            var quality = @params?["quality"]?.Value<int>() ?? ScreenshotSupport.DefaultJpgQuality;
             var view = SceneView.lastActiveSceneView ?? Resources.FindObjectsOfTypeAll<SceneView>().FirstOrDefault();
             if (view == null || view.camera == null)
             {
@@ -48,11 +49,12 @@ namespace AgentBridge
                 texture = new Texture2D(width, height, TextureFormat.RGBA32, false);
                 texture.ReadPixels(new Rect(0, 0, width, height), 0, 0, false);
                 texture.Apply(false, false);
-                fileByteLength = ScreenshotSupport.WritePng(
+                fileByteLength = ScreenshotSupport.WriteJpg(
                     target,
                     texture,
+                    quality,
                     "CAPTURE_SCENE_VIEW_FAILED",
-                    "PNG 编码结果为空");
+                    "JPG 编码结果为空");
             }
             catch (CommandException)
             {
@@ -82,7 +84,8 @@ namespace AgentBridge
                 path = target.Path,
                 relativePath = target.RelativePath,
                 fileName = target.FileName,
-                format = "png",
+                format = ScreenshotSupport.Format,
+                quality,
                 width,
                 height,
                 fileByteLength
@@ -92,7 +95,8 @@ namespace AgentBridge
         public JObject ParamsSchema { get; } = JObject.Parse(@"{
   ""type"": ""object"",
   ""properties"": {
-    ""fileName"": { ""type"": ""string"" },
+    ""fileName"": { ""type"": ""string"", ""description"": ""可选 JPG 文件名；缺省自动生成唯一文件名。"" },
+    ""quality"": { ""type"": ""integer"", ""minimum"": 1, ""maximum"": 100, ""default"": 85, ""description"": ""JPG 编码质量。"" },
     ""width"": { ""type"": ""integer"", ""minimum"": 1, ""maximum"": 8192 },
     ""height"": { ""type"": ""integer"", ""minimum"": 1, ""maximum"": 8192 }
   }

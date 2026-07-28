@@ -223,9 +223,9 @@ namespace AgentBridge.Tests.ProductEditMode
             }
         }
 
-        [TestCase("capture.png", 0, 2, "capture_001.png")]
-        [TestCase("capture.png", 11, 12, "capture_012.png")]
-        [TestCase("capture.png", 0, 1, "capture.png")]
+        [TestCase("capture.jpg", 0, 2, "capture_001.jpg")]
+        [TestCase("capture.jpg", 11, 12, "capture_012.jpg")]
+        [TestCase("capture.jpg", 0, 1, "capture.jpg")]
         public void CaptureGameView_SequenceFileNameIsStable(
             string fileName,
             int index,
@@ -272,33 +272,39 @@ namespace AgentBridge.Tests.ProductEditMode
         }
 
         [Test]
-        public void ScreenshotSupport_WritePngDoesNotCleanOtherScreenshots()
+        public void ScreenshotSupport_WriteJpgDoesNotCleanOtherScreenshots()
         {
             var directory = System.IO.Path.Combine(
                 System.IO.Path.GetTempPath(),
                 $"AgentBridgeScreenshotCleanup-{Guid.NewGuid():N}");
             System.IO.Directory.CreateDirectory(directory);
-            var oldPath = System.IO.Path.Combine(directory, "old.png");
+            var oldPath = System.IO.Path.Combine(directory, "old.jpg");
             System.IO.File.WriteAllText(oldPath, "previous screenshot");
             var texture = new Texture2D(1, 1, TextureFormat.RGBA32, false);
             try
             {
                 texture.SetPixel(0, 0, Color.red);
                 texture.Apply(false, false);
-                var targetPath = System.IO.Path.Combine(directory, "current.png");
+                var targetPath = System.IO.Path.Combine(directory, "current.jpg");
                 var target = new ScreenshotSupport.Target(
-                    "current.png",
+                    "current.jpg",
                     targetPath);
 
-                var byteLength = ScreenshotSupport.WritePng(
+                var byteLength = ScreenshotSupport.WriteJpg(
                     target,
                     texture,
+                    82,
                     "ENCODE_FAILED",
                     "encode failed");
 
                 Assert.That(byteLength, Is.GreaterThan(0));
                 Assert.That(System.IO.File.Exists(targetPath), Is.True);
                 Assert.That(System.IO.File.Exists(oldPath), Is.True);
+                var bytes = System.IO.File.ReadAllBytes(targetPath);
+                Assert.That(bytes[0], Is.EqualTo(0xff));
+                Assert.That(bytes[1], Is.EqualTo(0xd8));
+                Assert.That(bytes[bytes.Length - 2], Is.EqualTo(0xff));
+                Assert.That(bytes[bytes.Length - 1], Is.EqualTo(0xd9));
             }
             finally
             {
@@ -315,7 +321,7 @@ namespace AgentBridge.Tests.ProductEditMode
         {
             Assert.That(CommandDispatcher.TryPrepare(
                 "capture_game_view",
-                new JObject { ["count"] = 3, ["intervalMs"] = 250 },
+                new JObject { ["count"] = 3, ["intervalMs"] = 250, ["quality"] = 85 },
                 CommandInvocationPolicy.Single,
                 out _,
                 out var validError), Is.True, validError?.Error?.Message);
@@ -335,10 +341,26 @@ namespace AgentBridge.Tests.ProductEditMode
                 out _,
                 out var intervalError), Is.False);
             Assert.That(intervalError.Error.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+
+            Assert.That(CommandDispatcher.TryPrepare(
+                "capture_game_view",
+                new JObject { ["quality"] = 0 },
+                CommandInvocationPolicy.Single,
+                out _,
+                out var gameQualityError), Is.False);
+            Assert.That(gameQualityError.Error.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+
+            Assert.That(CommandDispatcher.TryPrepare(
+                "capture_scene_view",
+                new JObject { ["quality"] = 101 },
+                CommandInvocationPolicy.Single,
+                out _,
+                out var sceneQualityError), Is.False);
+            Assert.That(sceneQualityError.Error.Code, Is.EqualTo(ErrorCodes.InvalidParams));
         }
 
         [Test]
-        public void CaptureSchemas_DoNotExposeOverwrite()
+        public void CaptureSchemas_ExposeJpgQualityWithoutOverwrite()
         {
             var captures = CommandRegistry.GetRegistrations()
                 .Where(registration =>
@@ -349,11 +371,41 @@ namespace AgentBridge.Tests.ProductEditMode
             Assert.That(captures, Has.Length.EqualTo(2));
             foreach (var capture in captures)
             {
-                Assert.That(capture.ParamsSchema["properties"]?["overwrite"], Is.Null,
-                    capture.Command);
+                var properties = capture.ParamsSchema["properties"] as JObject;
+                Assert.That(properties?["overwrite"], Is.Null, capture.Command);
+                var quality = properties?["quality"] as JObject;
+                Assert.That(quality, Is.Not.Null, capture.Command);
+                Assert.That(quality?["minimum"]?.Value<int>(), Is.EqualTo(1), capture.Command);
+                Assert.That(quality?["maximum"]?.Value<int>(), Is.EqualTo(100), capture.Command);
+                Assert.That(quality?["default"]?.Value<int>(),
+                    Is.EqualTo(ScreenshotSupport.DefaultJpgQuality), capture.Command);
                 Assert.That(capture.Description, Does.Not.Contain("overwrite"),
                     capture.Command);
             }
+        }
+
+        [TestCase("capture", "capture.jpg")]
+        [TestCase("capture.jpg", "capture.jpg")]
+        [TestCase("capture.JPG", "capture.JPG")]
+        public void ScreenshotSupport_ResolvesJpgFileNames(
+            string requested,
+            string expected)
+        {
+            Assert.That(
+                ScreenshotSupport.ResolveFileName(requested, "game_view"),
+                Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void ScreenshotSupport_DefaultsToJpgAndRejectsPng()
+        {
+            Assert.That(
+                ScreenshotSupport.ResolveFileName(null, "game_view"),
+                Does.EndWith(".jpg"));
+
+            var error = Assert.Throws<CommandException>(() =>
+                ScreenshotSupport.ResolveFileName("capture.png", "game_view"));
+            Assert.That(error.Code, Is.EqualTo(ErrorCodes.InvalidParams));
         }
 
         [Test]

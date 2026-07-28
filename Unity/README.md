@@ -30,7 +30,7 @@ https://github.com/XuToWei/UnityAgentBridge.git?path=Unity
 请求上限为 1 MiB，`params` 必须是 object，并会在执行 handler 前按该命令的 `paramsSchema` 校验。
 响应按 UTF-8 计算固定上限为 1 MiB；超限结果会改为紧凑的 `RESPONSE_TOO_LARGE` 错误响应。
 
-每条截图命令会在开始捕获前清理 `.agentbridge/screenshots/` 中的旧截图和截图临时文件；连续截图只在整批开始时清理一次。
+截图命令使用可配置 `quality`（默认 85）的 JPG 编码，并在开始捕获前清理 `.agentbridge/screenshots/` 中的旧截图和截图临时文件；连续截图只在整批开始时清理一次。
 
 场景命令返回的 ObjectRef / ComponentRef 应原样回传；新 ComponentRef 的 `exactType=true` 表示索引按精确 runtime type 计算。`set_game_view_resolution` 会返回 `restore` 令牌，临时截图或验证完成后应把令牌原样回传以恢复 Game View 并删除本次新增的自定义尺寸。
 

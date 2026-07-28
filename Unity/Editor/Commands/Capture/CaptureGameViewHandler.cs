@@ -10,20 +10,19 @@ using UnityEngine;
 namespace AgentBridge
 {
     /// <summary>
-    /// capture_game_view(只读):捕获当前 Game 视图为 PNG,写入 .agentbridge/screenshots 并返回文件路径。
+    /// capture_game_view(只读):捕获当前 Game 视图为 JPG,写入 .agentbridge/screenshots 并返回文件路径。
     /// 每条命令在开始捕获前清理旧截图；多张截图按间隔顺序捕获。
-    /// params 可选:fileName/count/intervalMs。
+    /// params 可选:fileName/quality/count/intervalMs。
     /// </summary>
     public sealed class CaptureGameViewHandler : ICommandHandler
     {
-        private const string Format = "png";
         private const string GameViewUnavailableError = "GAME_VIEW_UNAVAILABLE";
         private const string CaptureFailedError = "CAPTURE_GAME_VIEW_FAILED";
 
         public string Command => "capture_game_view";
 
         public string Description =>
-            "捕获当前 Game 视图为 PNG;开始捕获前清理 .agentbridge/screenshots 中的旧截图;支持 fileName 和 count/intervalMs 连续截图;单张返回 path/relativePath/fileName/format/width/height/fileByteLength,多张返回 count/intervalMs/captures[]";
+            "捕获当前 Game 视图为 JPG;开始捕获前清理 .agentbridge/screenshots 中的旧截图;支持 fileName/quality 和 count/intervalMs 连续截图;单张返回 path/relativePath/fileName/format/quality/width/height/fileByteLength,多张返回 count/intervalMs/quality/captures[]";
 
         public string Group => "Capture";
         public bool CanDisable => true;
@@ -33,12 +32,13 @@ namespace AgentBridge
         {
             var count = @params?["count"]?.Value<int>() ?? 1;
             var intervalMs = @params?["intervalMs"]?.Value<int>() ?? 0;
+            var quality = @params?["quality"]?.Value<int>() ?? ScreenshotSupport.DefaultJpgQuality;
             var targets = PrepareTargets(@params, count);
             ScreenshotSupport.CleanupPreviousScreenshots();
 
             if (count == 1)
             {
-                return Capture(targets[0]);
+                return Capture(targets[0], quality);
             }
 
             var captures = new JArray();
@@ -48,13 +48,14 @@ namespace AgentBridge
                 {
                     await TaskExtension.Delay(intervalMs);
                 }
-                captures.Add(Capture(targets[index]));
+                captures.Add(Capture(targets[index], quality));
             }
 
             return new
             {
                 count,
                 intervalMs,
+                quality,
                 captures
             };
         }
@@ -100,22 +101,27 @@ namespace AgentBridge
             return $"{stem}_{(index + 1).ToString("D" + digits)}{extension}";
         }
 
-        private static JObject Capture(ScreenshotSupport.Target target)
+        private static JObject Capture(
+            ScreenshotSupport.Target target,
+            int quality)
         {
-            var capture = CaptureAndWritePng(target);
+            var capture = CaptureAndWriteJpg(target, quality);
             return new JObject
             {
                 ["path"] = target.Path,
                 ["relativePath"] = target.RelativePath,
                 ["fileName"] = target.FileName,
-                ["format"] = Format,
+                ["format"] = ScreenshotSupport.Format,
+                ["quality"] = quality,
                 ["width"] = capture.Width,
                 ["height"] = capture.Height,
                 ["fileByteLength"] = capture.FileByteLength
             };
         }
 
-        private static CaptureResult CaptureAndWritePng(ScreenshotSupport.Target target)
+        private static CaptureResult CaptureAndWriteJpg(
+            ScreenshotSupport.Target target,
+            int quality)
         {
             Texture2D texture = null;
             try
@@ -142,11 +148,12 @@ namespace AgentBridge
                 ScreenshotSupport.ValidateSize(
                     texture.width, texture.height, GameViewUnavailableError, "Game View ");
 
-                var fileByteLength = ScreenshotSupport.WritePng(
+                var fileByteLength = ScreenshotSupport.WriteJpg(
                     target,
                     texture,
+                    quality,
                     CaptureFailedError,
-                    "Game 视图截图 PNG 编码失败。");
+                    "Game 视图截图 JPG 编码失败。");
                 return new CaptureResult(texture.width, texture.height, fileByteLength);
             }
             catch (CommandException)
@@ -247,7 +254,7 @@ namespace AgentBridge
                 texture.ReadPixels(new Rect(0, 0, renderTexture.width, renderTexture.height), 0, 0, false);
                 // Game View's internal render texture is already vertically flipped on
                 // top-origin graphics APIs. ReadPixels preserves that row order, so normalize
-                // it before encoding to the top-down PNG convention.
+                // it before encoding to the top-down image convention.
                 if (SystemInfo.graphicsUVStartsAtTop)
                 {
                     ScreenshotSupport.FlipVertically(texture);
@@ -370,7 +377,8 @@ namespace AgentBridge
         public JObject ParamsSchema { get; } = JObject.Parse(@"{
   ""type"": ""object"",
   ""properties"": {
-    ""fileName"": { ""type"": ""string"", ""description"": ""可选 PNG 文件名;只能是文件名本身,不能包含目录或路径分隔符;缺省自动生成唯一文件名。"" },
+    ""fileName"": { ""type"": ""string"", ""description"": ""可选 JPG 文件名;只能是文件名本身,不能包含目录或路径分隔符;缺省自动生成唯一文件名。"" },
+    ""quality"": { ""type"": ""integer"", ""minimum"": 1, ""maximum"": 100, ""default"": 85, ""description"": ""JPG 编码质量。"" },
     ""count"": { ""type"": ""integer"", ""minimum"": 1, ""maximum"": 100, ""default"": 1, ""description"": ""截图张数；大于 1 时按顺序返回 captures。"" },
     ""intervalMs"": { ""type"": ""integer"", ""minimum"": 0, ""maximum"": 60000, ""default"": 0, ""description"": ""相邻截图的等待毫秒数；count=1 时忽略。"" }
   }

@@ -8,6 +8,9 @@ namespace AgentBridge
 {
     internal static class ScreenshotSupport
     {
+        internal const int DefaultJpgQuality = 85;
+        internal const string Format = "jpg";
+
         private const long MaxPixels = 32 * 1024 * 1024;
         private const string DirectoryName = "screenshots";
         private const string AlreadyExistsError = "SCREENSHOT_ALREADY_EXISTS";
@@ -52,13 +55,14 @@ namespace AgentBridge
             return bytes.LongLength;
         }
 
-        public static long WritePng(
+        public static long WriteJpg(
             Target target,
             Texture2D texture,
+            int quality,
             string encodeErrorCode,
             string encodeErrorMessage)
         {
-            var bytes = texture.EncodeToPNG();
+            var bytes = texture.EncodeToJPG(quality);
             if (bytes == null || bytes.Length == 0)
             {
                 throw new CommandException(encodeErrorCode, encodeErrorMessage);
@@ -95,6 +99,8 @@ namespace AgentBridge
             {
                 var extension = Path.GetExtension(path);
                 if (!string.Equals(extension, ".png", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(extension, ".jpg", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(extension, ".jpeg", StringComparison.OrdinalIgnoreCase) &&
                     !string.Equals(extension, ".tmp", StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
@@ -167,7 +173,7 @@ namespace AgentBridge
             if (requested == null)
             {
                 var stamp = DateTime.UtcNow.ToString("yyyyMMdd'T'HHmmssfff'Z'", CultureInfo.InvariantCulture);
-                return $"{prefix}_{stamp}_{Guid.NewGuid().ToString("N").Substring(0, 8)}.png";
+                return $"{prefix}_{stamp}_{Guid.NewGuid().ToString("N").Substring(0, 8)}.jpg";
             }
             var name = requested.Trim();
             if (string.IsNullOrEmpty(name) || Path.IsPathRooted(name) || name.Contains("/") ||
@@ -175,16 +181,16 @@ namespace AgentBridge
                 name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
             {
                 throw new CommandException(ErrorCodes.InvalidParams,
-                    "fileName 只能是 PNG 文件名,不能包含目录、盘符、'..' 或非法字符");
+                    "fileName 只能是 JPG 文件名,不能包含目录、盘符、'..' 或非法字符");
             }
             var extension = Path.GetExtension(name);
             if (string.IsNullOrEmpty(extension))
             {
-                name = $"{name}.png";
+                name = $"{name}.jpg";
             }
-            else if (!string.Equals(extension, ".png", StringComparison.OrdinalIgnoreCase))
+            else if (!string.Equals(extension, ".jpg", StringComparison.OrdinalIgnoreCase))
             {
-                throw new CommandException(ErrorCodes.InvalidParams, "fileName 扩展名只能是 .png");
+                throw new CommandException(ErrorCodes.InvalidParams, "fileName 扩展名只能是 .jpg");
             }
             var stem = Path.GetFileNameWithoutExtension(name);
             if (string.IsNullOrWhiteSpace(stem) || name.Length > 255)

@@ -710,10 +710,12 @@ Invoke-TestCase "testing.get_test_result.missing" {
 # Write-capable commands are exercised only through inputs that must fail before mutation.
 $missingTransform = @{ object = @{ instanceId = 2147483647 }; type = "UnityEngine.Transform"; index = 0 }
 Invoke-BridgeErrorCases @(
-    @{ CaseId = "capture.invalid_file_name"; Command = "capture_game_view"; Params = @{ fileName = "../escape.png" }; ExpectedCode = "INVALID_PARAMS"; IdPrefix = "capture-bad" }
+    @{ CaseId = "capture.invalid_file_name"; Command = "capture_game_view"; Params = @{ fileName = "../escape.jpg" }; ExpectedCode = "INVALID_PARAMS"; IdPrefix = "capture-bad" }
     @{ CaseId = "capture.invalid_count"; Command = "capture_game_view"; Params = @{ count = 0 }; ExpectedCode = "INVALID_PARAMS"; IdPrefix = "capture-count-bad" }
     @{ CaseId = "capture.invalid_interval"; Command = "capture_game_view"; Params = @{ intervalMs = -1 }; ExpectedCode = "INVALID_PARAMS"; IdPrefix = "capture-interval-bad" }
-    @{ CaseId = "capture.scene_view.invalid_file_name"; Command = "capture_scene_view"; Params = @{ fileName = "../escape.png" }; ExpectedCode = "INVALID_PARAMS"; IdPrefix = "scene-capture-bad" }
+    @{ CaseId = "capture.invalid_quality"; Command = "capture_game_view"; Params = @{ quality = 0 }; ExpectedCode = "INVALID_PARAMS"; IdPrefix = "capture-quality-bad" }
+    @{ CaseId = "capture.scene_view.invalid_file_name"; Command = "capture_scene_view"; Params = @{ fileName = "../escape.jpg" }; ExpectedCode = "INVALID_PARAMS"; IdPrefix = "scene-capture-bad" }
+    @{ CaseId = "capture.scene_view.invalid_quality"; Command = "capture_scene_view"; Params = @{ quality = 101 }; ExpectedCode = "INVALID_PARAMS"; IdPrefix = "scene-capture-quality-bad" }
     @{ CaseId = "mutation.create_object.invalid_kind"; Command = "create_object"; Params = @{ kind = "invalid" }; ExpectedCode = "INVALID_PARAMS"; IdPrefix = "create-object-bad" }
     @{ CaseId = "mutation.create_object.invalid_primitive_numeric"; Command = "create_object"; Params = @{ kind = "primitive"; primitive = "999" }; ExpectedCode = "INVALID_PARAMS"; IdPrefix = "create-primitive-bad" }
     @{ CaseId = "mutation.delete_object.missing"; Command = "delete_object"; Params = @{ object = @{ instanceId = 2147483647 } }; ExpectedCode = "OBJECT_NOT_FOUND"; IdPrefix = "delete-object-bad" }
@@ -2598,44 +2600,57 @@ if ($Suite -ne "Baseline") {
         return $exchange
     }
 
-    $screenshotName = "agentbridge_validation_$fixtureId.png"
+    $screenshotName = "agentbridge_validation_$fixtureId.jpg"
     Invoke-TestCase "capture.game_view" {
-        $exchange = Invoke-BridgeRequest "capture_game_view" @{ fileName = $screenshotName } "capture"
+        $exchange = Invoke-BridgeRequest "capture_game_view" @{
+            fileName = $screenshotName
+            quality = 82
+        } "capture"
         Assert-Ok $exchange
+        Assert-Equal ([string]$exchange.Response.result.format) "jpg" "screenshot format mismatch"
+        Assert-Equal ([int]$exchange.Response.result.quality) 82 "screenshot quality mismatch"
         $script:ScreenshotPath = [string]$exchange.Response.result.path
         Assert-True (Test-Path -LiteralPath $script:ScreenshotPath) "screenshot file was not created"
         $bytes = [IO.File]::ReadAllBytes($script:ScreenshotPath)
-        Assert-True ($bytes.Length -gt 24) "screenshot is too small to be a PNG"
-        $pngSignature = @(137, 80, 78, 71, 13, 10, 26, 10)
-        for ($i = 0; $i -lt $pngSignature.Count; $i++) {
-            Assert-Equal $bytes[$i] $pngSignature[$i] "invalid PNG signature byte $i"
-        }
+        Assert-True ($bytes.Length -gt 4) "screenshot is too small to be a JPG"
+        Assert-Equal $bytes[0] 255 "invalid JPG SOI byte 0"
+        Assert-Equal $bytes[1] 216 "invalid JPG SOI byte 1"
+        Assert-Equal $bytes[$bytes.Length - 2] 255 "invalid JPG EOI byte 0"
+        Assert-Equal $bytes[$bytes.Length - 1] 217 "invalid JPG EOI byte 1"
         return $exchange
     }
 
     Invoke-TestCase "capture.cleans_previous_same_name" {
-        $exchange = Invoke-BridgeRequest "capture_game_view" @{ fileName = $screenshotName } "capture-duplicate"
+        $exchange = Invoke-BridgeRequest "capture_game_view" @{
+            fileName = $screenshotName
+            quality = 70
+        } "capture-duplicate"
         Assert-Ok $exchange
+        Assert-Equal ([int]$exchange.Response.result.quality) 70 "replacement screenshot quality mismatch"
         Assert-True ([long]$exchange.Response.result.fileByteLength -gt 0) "replacement screenshot is empty"
         return $exchange
     }
 
-    $sequenceScreenshotName = "agentbridge_sequence_$fixtureId.png"
+    $sequenceScreenshotName = "agentbridge_sequence_$fixtureId.jpg"
     Invoke-TestCase "capture.game_view.sequence" {
         $exchange = Invoke-BridgeRequest "capture_game_view" @{
             fileName = $sequenceScreenshotName
+            quality = 76
             count = 3
             intervalMs = 10
         } "capture-sequence"
         Assert-Ok $exchange
         Assert-Equal ([int]$exchange.Response.result.count) 3 "sequence capture count mismatch"
         Assert-Equal ([int]$exchange.Response.result.intervalMs) 10 "sequence capture interval mismatch"
+        Assert-Equal ([int]$exchange.Response.result.quality) 76 "sequence capture quality mismatch"
         $captures = @($exchange.Response.result.captures)
         Assert-Equal $captures.Count 3 "sequence capture result count mismatch"
         $script:SequenceScreenshotPaths = @($captures | ForEach-Object { [string]$_.path })
         for ($i = 0; $i -lt $captures.Count; $i++) {
-            $expectedName = "agentbridge_sequence_{0}_{1:D3}.png" -f $fixtureId, ($i + 1)
+            $expectedName = "agentbridge_sequence_{0}_{1:D3}.jpg" -f $fixtureId, ($i + 1)
             Assert-Equal ([string]$captures[$i].fileName) $expectedName "sequence file name mismatch"
+            Assert-Equal ([string]$captures[$i].format) "jpg" "sequence screenshot $i format mismatch"
+            Assert-Equal ([int]$captures[$i].quality) 76 "sequence screenshot $i quality mismatch"
             Assert-True (Test-Path -LiteralPath $script:SequenceScreenshotPaths[$i]) "sequence screenshot $i was not created"
             Assert-True ([long]$captures[$i].fileByteLength -gt 0) "sequence screenshot $i is empty"
         }
@@ -2667,34 +2682,39 @@ if ($Suite -ne "Baseline") {
         return $exchange
     }
 
-    $sceneViewScreenshotName = "agentbridge_scene_view_$fixtureId.png"
+    $sceneViewScreenshotName = "agentbridge_scene_view_$fixtureId.jpg"
     Invoke-TestCase "capture.scene_view" {
         $exchange = Invoke-BridgeRequest "capture_scene_view" @{
             fileName = $sceneViewScreenshotName
+            quality = 78
             width = 128
             height = 96
         } "capture-scene-view"
         Assert-Ok $exchange
+        Assert-Equal ([string]$exchange.Response.result.format) "jpg" "SceneView capture format mismatch"
+        Assert-Equal ([int]$exchange.Response.result.quality) 78 "SceneView capture quality mismatch"
         Assert-Equal ([int]$exchange.Response.result.width) 128 "SceneView capture width mismatch"
         Assert-Equal ([int]$exchange.Response.result.height) 96 "SceneView capture height mismatch"
         $script:SceneViewScreenshotPath = [string]$exchange.Response.result.path
         Assert-True (Test-Path -LiteralPath $script:SceneViewScreenshotPath) "SceneView screenshot file was not created"
         $bytes = [IO.File]::ReadAllBytes($script:SceneViewScreenshotPath)
-        Assert-True ($bytes.Length -gt 24) "SceneView screenshot is too small to be a PNG"
-        $pngSignature = @(137, 80, 78, 71, 13, 10, 26, 10)
-        for ($i = 0; $i -lt $pngSignature.Count; $i++) {
-            Assert-Equal $bytes[$i] $pngSignature[$i] "invalid SceneView PNG signature byte $i"
-        }
+        Assert-True ($bytes.Length -gt 4) "SceneView screenshot is too small to be a JPG"
+        Assert-Equal $bytes[0] 255 "invalid SceneView JPG SOI byte 0"
+        Assert-Equal $bytes[1] 216 "invalid SceneView JPG SOI byte 1"
+        Assert-Equal $bytes[$bytes.Length - 2] 255 "invalid SceneView JPG EOI byte 0"
+        Assert-Equal $bytes[$bytes.Length - 1] 217 "invalid SceneView JPG EOI byte 1"
         return $exchange
     }
 
     Invoke-TestCase "capture.scene_view.cleans_previous_same_name" {
         $exchange = Invoke-BridgeRequest "capture_scene_view" @{
             fileName = $sceneViewScreenshotName
+            quality = 65
             width = 64
             height = 64
         } "capture-scene-view-duplicate"
         Assert-Ok $exchange
+        Assert-Equal ([int]$exchange.Response.result.quality) 65 "replacement SceneView quality mismatch"
         Assert-Equal ([int]$exchange.Response.result.width) 64 "replacement SceneView capture width mismatch"
         Assert-True ([long]$exchange.Response.result.fileByteLength -gt 0) "replacement SceneView screenshot is empty"
         return $exchange
@@ -2702,7 +2722,7 @@ if ($Suite -ne "Baseline") {
 
     Invoke-TestCase "capture.scene_view.reject_pixel_limit" {
         $exchange = Invoke-BridgeRequest "capture_scene_view" @{
-            fileName = "agentbridge_scene_view_too_large_$fixtureId.png"
+            fileName = "agentbridge_scene_view_too_large_$fixtureId.jpg"
             width = 8192
             height = 8192
         } "capture-scene-view-large"

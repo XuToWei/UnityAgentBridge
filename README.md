@@ -69,7 +69,7 @@ The package currently includes these built-in commands, grouped by `ICommandHand
 - **Compilation** — `recompile`, `get_compile_result`
 - **Testing** — `run_tests`, `get_test_result`
 
-Each Capture command removes old screenshots and screenshot temp files from `.agentbridge/screenshots/` before capture starts. A capture sequence cleans once at the start of the sequence.
+Capture commands encode JPG files with configurable `quality` (default 85) and remove old screenshots and screenshot temp files from `.agentbridge/screenshots/` before capture starts. A capture sequence cleans once at the start of the sequence.
 
 This list is a package overview. `list_commands` remains the canonical command interface: it returns the live enabled command set, descriptions, parameter schemas, batch policies, and `commandsVersion`; do not copy that metadata into an agent prompt or integration.
 
