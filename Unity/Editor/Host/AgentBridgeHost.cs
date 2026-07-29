@@ -20,6 +20,9 @@ namespace AgentBridge
         public static bool IsRunning =>
             s_Channel != null && Directory.Exists(s_Channel.RootDir);
 
+        /// <summary>当前是否有已认领的 Exchange 尚未完成响应发布。</summary>
+        public static bool IsProcessing => s_IsProcessing;
+
         static AgentBridgeHost()
         {
             // 首次加载不创建目录；仅恢复已经启用过的 Bridge root。
@@ -47,6 +50,13 @@ namespace AgentBridge
 
         public static void Stop()
         {
+            if (s_IsProcessing)
+            {
+                Debug.LogWarning(
+                    "[AgentBridge] cannot stop while an exchange is still processing.");
+                return;
+            }
+
             EditorApplication.update -= Tick;
             if (s_Channel == null)
             {

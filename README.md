@@ -104,7 +104,7 @@ Scene-object responses use canonical round-trippable paths. Each GameObject name
 
 ## Command Manager
 
-`Window ▸ Agent Bridge` lists every command (built-in + extension) discovered via Unity `TypeCache`, grouped by **function** (`ICommandHandler.Group`), with click-to-sort headers, per-group filter, and bulk enable/disable. A top toolbar starts/stops the bridge host and toggles background (no-throttling) polling. Toggle any command on/off — a disabled command is **hidden from `list_commands`** and returns `COMMAND_DISABLED` on dispatch (the disable list is persisted in `EditorPrefs`, namespaced per project). Each handler declares this policy through `CanDisable`; protocol-required commands (`ping` and `list_commands`) return `false`.
+`Window ▸ Agent Bridge` lists every command (built-in + extension) discovered via Unity `TypeCache`, grouped by **function** (`ICommandHandler.Group`), with click-to-sort headers, per-group filter, and bulk enable/disable. A top toolbar starts/stops the bridge host and toggles background (no-throttling) polling. While an Exchange is processing, the bridge cannot be stopped; the toggle becomes available again after the terminal response is published. Toggle any command on/off — a disabled command is **hidden from `list_commands`** and returns `COMMAND_DISABLED` on dispatch (the disable list is persisted in `EditorPrefs`, namespaced per project). Each handler declares this policy through `CanDisable`; protocol-required commands (`ping` and `list_commands`) return `false`.
 
 ## Add your own command
 

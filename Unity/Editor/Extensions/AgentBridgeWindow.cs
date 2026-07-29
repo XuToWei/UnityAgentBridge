@@ -173,6 +173,7 @@ namespace AgentBridge
             using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))
             {
                 var running = AgentBridgeHost.IsRunning;
+                var processing = AgentBridgeHost.IsProcessing;
                 var oldBackgroundColor = GUI.backgroundColor;
                 var oldContentColor = GUI.contentColor;
                 if (running)
@@ -180,8 +181,18 @@ namespace AgentBridge
                     GUI.backgroundColor = GetSuccessBackgroundColor();
                     GUI.contentColor = Color.white;
                 }
-                var newRunning = GUILayout.Toggle(running, new GUIContent("启用桥接", "启动或停止文件轮询主机"),
-                    EditorStyles.toolbarButton, GUILayout.Width(86));
+                bool newRunning;
+                using (new EditorGUI.DisabledScope(processing))
+                {
+                    var bridgeTooltip = processing
+                        ? "命令执行中，完成响应发布后才能停止桥接"
+                        : "启动或停止文件轮询主机";
+                    newRunning = GUILayout.Toggle(
+                        running,
+                        new GUIContent("启用桥接", bridgeTooltip),
+                        EditorStyles.toolbarButton,
+                        GUILayout.Width(86));
+                }
                 GUI.backgroundColor = oldBackgroundColor;
                 GUI.contentColor = oldContentColor;
                 if (newRunning != running)

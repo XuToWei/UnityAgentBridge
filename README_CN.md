@@ -103,7 +103,7 @@ Capture 命令使用可配置 `quality`（默认 85）的 JPG 编码，并在开
 
 ## 命令管理器
 
-`Window ▸ Agent Bridge` 用 Unity `TypeCache` 列出所有命令(内置 + 扩展),按**功能分组**(`ICommandHandler.Group`),表头点击排序、分组筛选、批量启停;顶部工具条启停桥接主机、切换后台运行。任意命令可打勾启停——被禁用的命令**从 `list_commands` 隐藏**、分发时返回 `COMMAND_DISABLED`(禁用名单存 `EditorPrefs`,按工程命名空间隔离)。每个 handler 通过 `CanDisable` 自行声明策略；协议必需的 `ping` 与 `list_commands` 返回 `false`。
+`Window ▸ Agent Bridge` 用 Unity `TypeCache` 列出所有命令(内置 + 扩展),按**功能分组**(`ICommandHandler.Group`),表头点击排序、分组筛选、批量启停;顶部工具条启停桥接主机、切换后台运行。Exchange 执行期间不能停止桥接；终态响应发布后，停止开关会重新可用。任意命令可打勾启停——被禁用的命令**从 `list_commands` 隐藏**、分发时返回 `COMMAND_DISABLED`(禁用名单存 `EditorPrefs`,按工程命名空间隔离)。每个 handler 通过 `CanDisable` 自行声明策略；协议必需的 `ping` 与 `list_commands` 返回 `false`。
 
 ## 添加自定义命令
 
