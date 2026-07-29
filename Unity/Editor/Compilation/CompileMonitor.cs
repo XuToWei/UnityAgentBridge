@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Newtonsoft.Json;
 using UnityEditor;
 using UnityEditor.Compilation;
@@ -7,13 +8,15 @@ namespace AgentBridge
 {
     /// <summary>
     /// 编译消息收集器(cmd-compile-check)。[InitializeOnLoad] 订阅 CompilationPipeline 三事件,
-    /// 把编译 error/warning 收进 SessionState(跨 domain reload 存活、编辑器重启清)。命令侧只读 Read()。
+    /// 编译期间在内存有界累计 error/warning，开始与结束时写入 SessionState
+    /// (跨 domain reload 存活、编辑器重启清)。命令侧只读 Read()。
     /// 对应 cmd-compile-check design D2/D4。
     /// </summary>
     [InitializeOnLoad]
     public static class CompileMonitor
     {
         public const string StateKey = "AgentBridge.CompileResult";
+        private static CompileResult s_ActiveResult;
 
         static CompileMonitor()
         {
@@ -25,6 +28,13 @@ namespace AgentBridge
         /// <summary>读最近一次编译快照(无记录返回空快照,Compiling=false)。</summary>
         public static CompileResult Read()
         {
+            return s_ActiveResult == null
+                ? ReadPersisted()
+                : Clone(s_ActiveResult);
+        }
+
+        private static CompileResult ReadPersisted()
+        {
             var json = SessionState.GetString(StateKey, "");
             if (string.IsNullOrEmpty(json))
             {
@@ -33,10 +43,7 @@ namespace AgentBridge
             try
             {
                 var result = JsonConvert.DeserializeObject<CompileResult>(json) ?? new CompileResult();
-                if (result.Messages == null)
-                {
-                    result.Messages = new System.Collections.Generic.List<CompileMessage>();
-                }
+                CompileDiagnosticCollector.NormalizeLoaded(result);
                 return result;
             }
             catch
@@ -78,13 +85,15 @@ namespace AgentBridge
                 RequestFailed = false,
                 RequestError = null
             };
+            CompileDiagnosticCollector.Reset(result);
+            s_ActiveResult = result;
             Write(result);
-            return result;
+            return Clone(result);
         }
 
         public static void MarkRequestFailed(int generation, string error)
         {
-            var result = Read();
+            var result = s_ActiveResult ?? ReadPersisted();
             if (result.Generation != generation)
             {
                 return;
@@ -92,13 +101,19 @@ namespace AgentBridge
             result.Compiling = false;
             result.CompiledAt = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
             result.RequestFailed = true;
-            result.RequestError = error;
+            result.RequestError = CompileDiagnosticCollector.TruncateMessage(error);
             Write(result);
+            s_ActiveResult = null;
         }
 
         private static void OnCompilationStarted(object context)
         {
-            var result = Read();
+            BeginCompilation();
+        }
+
+        internal static void BeginCompilation()
+        {
+            var result = s_ActiveResult ?? ReadPersisted();
             if (!result.Compiling)
             {
                 result = new CompileResult
@@ -111,30 +126,75 @@ namespace AgentBridge
             result.CompiledAt = null;
             result.RequestFailed = false;
             result.RequestError = null;
-            result.Messages.Clear();
+            CompileDiagnosticCollector.Reset(result);
+            s_ActiveResult = result;
             Write(result);
         }
 
         private static void OnAssemblyCompilationFinished(string assemblyPath, CompilerMessage[] messages)
         {
-            var result = Read();
-            foreach (var m in messages)
+            CollectAssemblyMessages(messages);
+        }
+
+        internal static void CollectAssemblyMessages(CompilerMessage[] messages)
+        {
+            var result = s_ActiveResult ?? ReadPersisted();
+            if (!result.Compiling)
             {
-                if (m.type != CompilerMessageType.Error && m.type != CompilerMessageType.Warning)
-                {
-                    continue; // 只收 error/warning,忽略 info 等
-                }
-                result.Messages.Add(Map(m));
+                return;
             }
-            Write(result);
+
+            s_ActiveResult = result;
+            CompileDiagnosticCollector.Append(result, messages);
         }
 
         private static void OnCompilationFinished(object context)
         {
-            var result = Read();
+            FinishCompilation();
+        }
+
+        internal static void FinishCompilation()
+        {
+            var result = s_ActiveResult ?? ReadPersisted();
             result.Compiling = false;
             result.CompiledAt = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
             Write(result);
+            s_ActiveResult = null;
+        }
+
+        private static CompileResult Clone(CompileResult source)
+        {
+            var messages = new List<CompileMessage>(source.Messages.Count);
+            foreach (var message in source.Messages)
+            {
+                messages.Add(new CompileMessage
+                {
+                    File = message.File,
+                    Line = message.Line,
+                    Column = message.Column,
+                    Message = message.Message,
+                    Type = message.Type
+                });
+            }
+
+            return new CompileResult
+            {
+                Compiling = source.Compiling,
+                Generation = source.Generation,
+                RequestedAt = source.RequestedAt,
+                CompiledAt = source.CompiledAt,
+                RequestFailed = source.RequestFailed,
+                RequestError = source.RequestError,
+                ErrorCount = source.ErrorCount,
+                WarningCount = source.WarningCount,
+                StoredErrorCount = source.StoredErrorCount,
+                StoredWarningCount = source.StoredWarningCount,
+                OmittedErrorCount = source.OmittedErrorCount,
+                OmittedWarningCount = source.OmittedWarningCount,
+                StoredDiagnosticBytes = source.StoredDiagnosticBytes,
+                DiagnosticsTruncated = source.DiagnosticsTruncated,
+                Messages = messages
+            };
         }
     }
 }

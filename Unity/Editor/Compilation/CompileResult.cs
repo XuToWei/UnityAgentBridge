@@ -15,6 +15,14 @@ namespace AgentBridge
         [JsonProperty("compiledAt")] public string CompiledAt { get; set; }
         [JsonProperty("requestFailed")] public bool RequestFailed { get; set; }
         [JsonProperty("requestError")] public string RequestError { get; set; }
+        [JsonProperty("errorCount")] public int ErrorCount { get; set; }
+        [JsonProperty("warningCount")] public int WarningCount { get; set; }
+        [JsonProperty("storedErrorCount")] public int StoredErrorCount { get; set; }
+        [JsonProperty("storedWarningCount")] public int StoredWarningCount { get; set; }
+        [JsonProperty("omittedErrorCount")] public int OmittedErrorCount { get; set; }
+        [JsonProperty("omittedWarningCount")] public int OmittedWarningCount { get; set; }
+        [JsonProperty("storedDiagnosticBytes")] public int StoredDiagnosticBytes { get; set; }
+        [JsonProperty("diagnosticsTruncated")] public bool DiagnosticsTruncated { get; set; }
         [JsonProperty("messages")] public List<CompileMessage> Messages { get; set; } = new List<CompileMessage>();
     }
 }
