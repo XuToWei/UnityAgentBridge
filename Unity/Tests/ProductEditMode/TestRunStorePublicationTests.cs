@@ -66,6 +66,46 @@ namespace AgentBridge.Tests.ProductEditMode
             AssertNoPublicationArtifacts();
         }
 
+        [Test]
+        public void TryLoad_RejectsOversizedFileBeforeJsonParsing()
+        {
+            Directory.CreateDirectory(m_ResultDirectory);
+            using (var file = new FileStream(
+                       m_ResultPath,
+                       FileMode.CreateNew,
+                       FileAccess.Write,
+                       FileShare.None))
+            {
+                file.SetLength(TestResultLimits.MaxStoredFileBytes + 1L);
+            }
+
+            var error = Assert.Throws<CommandException>(
+                () => TestRunStore.TryLoad(m_RunId, out _));
+
+            Assert.That(error.Code, Is.EqualTo(TestErrorCodes.TestRunStateCorrupt));
+            Assert.That(error.Message,
+                Does.Contain("超过").And.Contain(TestResultLimits.MaxStoredFileBytes.ToString()));
+        }
+
+        [Test]
+        public void Save_RejectsOversizedSerializedRecordWithoutPublishingArtifacts()
+        {
+            var record = new TestRunRecord
+            {
+                RunId = m_RunId,
+                Status = TestRunStatuses.Completed,
+                Message = new string('x', TestResultLimits.MaxStoredFileBytes)
+            };
+
+            var error = Assert.Throws<CommandException>(() => TestRunStore.Save(record));
+
+            Assert.That(error.Code, Is.EqualTo(TestErrorCodes.TestRunStateCorrupt));
+            Assert.That(error.Message,
+                Does.Contain("超过").And.Contain(TestResultLimits.MaxStoredFileBytes.ToString()));
+            Assert.That(File.Exists(m_ResultPath), Is.False);
+            AssertNoPublicationArtifacts();
+        }
+
         private void AssertNoPublicationArtifacts()
         {
             Assert.That(Directory.GetFiles(m_ResultDirectory, ".*.tmp"), Is.Empty);

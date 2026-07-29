@@ -29,6 +29,7 @@ namespace AgentBridge
         public const int MaxRunTextLength = 8192;
         public const int MaxTraversalNodes = 100000;
         public const int MaxStoredTextCharacters = 524288;
+        public const int MaxStoredFileBytes = 8 * 1024 * 1024;
         public const int MaxReturnedTextCharacters = 131072;
 
         private const string TruncatedSuffix = "\n...[truncated]";

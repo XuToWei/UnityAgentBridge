@@ -11,6 +11,7 @@ namespace AgentBridge
     {
         private const string FilePrefix = "test-run-";
         private const string FileExtension = ".json";
+        private static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
 
         private static string ResultDirectory => Path.Combine(BridgeSettings.RootDir, "test-results");
 
@@ -31,8 +32,10 @@ namespace AgentBridge
                 Directory.CreateDirectory(ResultDirectory);
                 EnforceResultBudget(record);
                 var json = JsonConvert.SerializeObject(record, Formatting.Indented);
+                var bytes = Utf8NoBom.GetBytes(json);
+                EnsureFileSize(record.RunId, bytes.LongLength);
                 AtomicFilePublisher.Publish(GetPath(record.RunId), true,
-                    temp => File.WriteAllText(temp, json, new UTF8Encoding(false)));
+                    temp => File.WriteAllBytes(temp, bytes));
             }
             catch (CommandException)
             {
@@ -57,8 +60,7 @@ namespace AgentBridge
 
             try
             {
-                var json = File.ReadAllText(path, Encoding.UTF8);
-                record = JsonConvert.DeserializeObject<TestRunRecord>(json);
+                record = ReadRecord(path, runId);
             }
             catch (JsonException ex)
             {
@@ -138,6 +140,41 @@ namespace AgentBridge
         private static string GetPath(string runId)
         {
             return Path.Combine(ResultDirectory, $"{runId}{FileExtension}");
+        }
+
+        private static TestRunRecord ReadRecord(string path, string runId)
+        {
+            using (var stream = new FileStream(
+                       path,
+                       FileMode.Open,
+                       FileAccess.Read,
+                       FileShare.Read | FileShare.Delete))
+            {
+                EnsureFileSize(runId, stream.Length);
+                using (var textReader = new StreamReader(
+                           stream,
+                           Utf8NoBom,
+                           true,
+                           4096,
+                           false))
+                using (var jsonReader = new JsonTextReader(textReader))
+                {
+                    var serializer = JsonSerializer.CreateDefault();
+                    serializer.CheckAdditionalContent = true;
+                    return serializer.Deserialize<TestRunRecord>(jsonReader);
+                }
+            }
+        }
+
+        private static void EnsureFileSize(string runId, long bytes)
+        {
+            if (bytes > TestResultLimits.MaxStoredFileBytes)
+            {
+                throw new CommandException(
+                    TestErrorCodes.TestRunStateCorrupt,
+                    $"测试结果文件超过 {TestResultLimits.MaxStoredFileBytes} bytes 上限:" +
+                    $"'{runId}':{bytes} bytes");
+            }
         }
 
         private static void ValidateLoadedRecord(string expectedRunId, TestRunRecord record)
