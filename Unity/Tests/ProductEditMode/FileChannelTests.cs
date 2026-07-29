@@ -103,6 +103,58 @@ namespace AgentBridge.Tests.ProductEditMode
         }
 
         [Test]
+        public async Task RequestReadFailureBeforeClaimLeavesRequestForRetry()
+        {
+            if (Path.DirectorySeparatorChar != '\\')
+            {
+                Assert.Ignore("This test requires Windows file sharing semantics.");
+            }
+
+            var channel = new FileChannel(m_Root);
+            WriteRequest(RequestPath, "read-retry");
+            var dispatchCount = 0;
+
+            bool processed;
+            // 允许 rename/delete，但拒绝新的读句柄，精确复现旧实现中
+            // Claim 成功、随后读取 processing.json 失败的共享冲突。
+            using (new FileStream(
+                       RequestPath,
+                       FileMode.Open,
+                       FileAccess.ReadWrite,
+                       FileShare.Delete))
+            {
+                processed = await channel.TryProcessOneAsync(
+                    AsyncDispatch(request =>
+                    {
+                        dispatchCount++;
+                        return OkResponse();
+                    }),
+                    () => "test-version");
+
+                Assert.That(processed, Is.False);
+                Assert.That(dispatchCount, Is.Zero);
+                Assert.That(File.Exists(RequestPath), Is.True);
+                Assert.That(File.Exists(ProcessingPath), Is.False);
+                Assert.That(File.Exists(ResponsePath), Is.False);
+            }
+
+            processed = await channel.TryProcessOneAsync(
+                AsyncDispatch(request =>
+                {
+                    dispatchCount++;
+                    Assert.That(request.Id, Is.EqualTo("read-retry"));
+                    return OkResponse();
+                }),
+                () => "test-version");
+
+            Assert.That(processed, Is.True);
+            Assert.That(dispatchCount, Is.EqualTo(1));
+            Assert.That(File.Exists(RequestPath), Is.False);
+            Assert.That(File.Exists(ProcessingPath), Is.False);
+            Assert.That(ReadResponse()["status"]?.Value<string>(), Is.EqualTo("ok"));
+        }
+
+        [Test]
         public async Task TryProcessOneAsyncKeepsClaimUntilDispatchCompletes()
         {
             var channel = new FileChannel(m_Root);

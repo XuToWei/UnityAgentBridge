@@ -8,7 +8,7 @@ using Newtonsoft.Json.Linq;
 namespace AgentBridge
 {
     /// <summary>
-    /// 固定单槽文件通讯：处理一个完整 Exchange，并负责 Claim、恢复、校验、响应发布与清理。
+    /// 固定单槽文件通讯：处理一个完整 Exchange，并负责预读校验、Claim、恢复、响应发布与清理。
     /// 不依赖 Unity API，可用临时目录直接验证文件协议。
     /// </summary>
     internal sealed class FileChannel
@@ -53,8 +53,8 @@ namespace AgentBridge
         }
 
         /// <summary>
-        /// 处理至多一个 Exchange。Claim 后直接 await 命令完成并发布响应；调用方必须
-        /// 避免并发调用。await 期间
+        /// 处理至多一个 Exchange。先完整读取请求，成功后 Claim，再直接 await 命令完成并发布响应；
+        /// 调用方必须避免并发调用。await 期间
         /// processing.json 保留，domain reload 后由新实例按 INTERRUPTED 恢复。
         /// </summary>
         internal async Task<bool> TryProcessOneAsync(
@@ -95,12 +95,16 @@ namespace AgentBridge
                 return false;
             }
 
+            // 在 Claim 前完成所有可能因临时文件锁失败的读取。读取失败时 request.json
+            // 保持原位，下轮可安全重试；Claim 后不再读取请求文件。
+            if (!TryReadRequest(out var request, out var responseId, out var validationError))
+            {
+                return false;
+            }
             if (!TryClaim())
             {
                 return false;
             }
-
-            var request = ParseClaim(out var responseId, out var validationError);
             var response = request == null
                 ? Error(ErrorCodes.InvalidRequest, validationError)
                 : await dispatch(request);
@@ -121,20 +125,25 @@ namespace AgentBridge
             }
         }
 
-        private Request ParseClaim(out string responseId, out string error)
+        private bool TryReadRequest(
+            out Request request,
+            out string responseId,
+            out string error)
         {
+            request = null;
             responseId = "";
+            error = null;
             JObject envelope;
             try
             {
-                if (new FileInfo(m_ProcessingPath).Length > MaxFileBytes)
+                if (new FileInfo(m_RequestPath).Length > MaxFileBytes)
                 {
                     error = $"request exceeds {MaxFileBytes} bytes";
-                    return null;
+                    return true;
                 }
 
                 var token = JToken.Parse(
-                    File.ReadAllText(m_ProcessingPath),
+                    File.ReadAllText(m_RequestPath),
                     new JsonLoadSettings
                     {
                         DuplicatePropertyNameHandling = DuplicatePropertyNameHandling.Error
@@ -142,30 +151,38 @@ namespace AgentBridge
                 if (token.Type != JTokenType.Object)
                 {
                     error = "request json must be an object";
-                    return null;
+                    return true;
                 }
                 envelope = (JObject)token;
+            }
+            catch (Exception ex) when (
+                ex is IOException ||
+                ex is UnauthorizedAccessException)
+            {
+                // 杀毒软件、同步盘或短暂共享冲突不应把尚未执行的请求升级为 Claim。
+                return false;
             }
             catch (JsonException)
             {
                 error = "failed to parse request json";
-                return null;
+                return true;
             }
 
             responseId = ResponseIdFrom(envelope["id"]);
             error = ValidateRequest(envelope);
             if (error != null)
             {
-                return null;
+                return true;
             }
 
-            return new Request
+            request = new Request
             {
                 V = 1,
                 Id = responseId,
                 Command = envelope["command"].Value<string>(),
                 Params = (JObject)envelope["params"]
             };
+            return true;
         }
 
         private static string ValidateRequest(JObject request)
