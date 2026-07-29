@@ -7,7 +7,8 @@ using UnityEngine;
 namespace AgentBridge
 {
     /// <summary>
-    /// Unity Editor 侧桥接宿主。已有 Bridge root 时，[InitializeOnLoad] 在 domain reload 后恢复轮询。
+    /// Unity Editor 侧桥接宿主。用户启用状态与 Bridge root 都有效时，
+    /// [InitializeOnLoad] 在 domain reload 后恢复轮询。
     /// 轮询从 EditorApplication.update 主线程启动异步分发；await 默认恢复到 Unity 主线程。
     /// </summary>
     [InitializeOnLoad]
@@ -25,9 +26,12 @@ namespace AgentBridge
 
         static AgentBridgeHost()
         {
-            // 首次加载不创建目录；仅恢复已经启用过的 Bridge root。
-            if (FileChannel.TryOpenExisting(BridgeSettings.RootDir, out var channel))
+            // 首次加载不创建目录；显式关闭后即使 Bridge root 保留也不恢复。
+            if (BridgeHostState.IsEnabled &&
+                FileChannel.TryOpenExisting(BridgeSettings.RootDir, out var channel))
             {
+                // 为仅有旧版 Bridge root 的工程写入一次兼容迁移结果。
+                BridgeHostState.SetEnabled(true);
                 Activate(channel);
             }
         }
@@ -44,6 +48,7 @@ namespace AgentBridge
             s_Channel = null;
             if (FileChannel.TryOpenExisting(BridgeSettings.RootDir, out var channel))
             {
+                BridgeHostState.SetEnabled(true);
                 Activate(channel);
             }
         }
@@ -58,6 +63,7 @@ namespace AgentBridge
             }
 
             EditorApplication.update -= Tick;
+            BridgeHostState.SetEnabled(false);
             if (s_Channel == null)
             {
                 return;

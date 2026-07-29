@@ -83,7 +83,7 @@ Capture 命令使用可配置 `quality`（默认 85）的 JPG 编码，并在开
   https://github.com/XuToWei/UnityAgentBridge.git?path=Unity
   ```
 
-首次安装后，打开 `Window ▸ Agent Bridge` 并点击**启用桥接**；此时才会创建桥接根目录 `<工程>/.agentbridge/` 并启动主机。Domain Reload 仅在该目录已经存在时自动恢复主机；目录不存在时，**启用桥接**按钮保持关闭。临时协议槽位为 `request.json`、`processing.json`、`response.json`。
+首次安装后，打开 `Window ▸ Agent Bridge` 并点击**启用桥接**；此时才会创建桥接根目录 `<工程>/.agentbridge/` 并启动主机。启用状态会按工程持久化：Domain Reload 仅在此前已启用且 Bridge root 仍存在时恢复主机；手动停止后，后续 reload 会保持停止。临时协议槽位为 `request.json`、`processing.json`、`response.json`。
 
 ## 自动验收
 
