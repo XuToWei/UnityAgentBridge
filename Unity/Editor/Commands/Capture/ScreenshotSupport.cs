@@ -11,7 +11,7 @@ namespace AgentBridge
         internal const int DefaultJpgQuality = 85;
         internal const string Format = "jpg";
 
-        private const long MaxPixels = 32 * 1024 * 1024;
+        private const long MaxPixels = 8 * 1024 * 1024;
         private const string DirectoryName = "screenshots";
         private const string AlreadyExistsError = "SCREENSHOT_ALREADY_EXISTS";
         private const string CleanupFailedError = "SCREENSHOT_CLEANUP_FAILED";
@@ -53,21 +53,6 @@ namespace AgentBridge
                 throw new CommandException("SCREENSHOT_WRITE_FAILED", ex.Message);
             }
             return bytes.LongLength;
-        }
-
-        public static long WriteJpg(
-            Target target,
-            Texture2D texture,
-            int quality,
-            string encodeErrorCode,
-            string encodeErrorMessage)
-        {
-            var bytes = texture.EncodeToJPG(quality);
-            if (bytes == null || bytes.Length == 0)
-            {
-                throw new CommandException(encodeErrorCode, encodeErrorMessage);
-            }
-            return Write(target, bytes);
         }
 
         internal static void CleanupPreviousScreenshots()

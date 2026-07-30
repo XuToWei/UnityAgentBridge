@@ -34,11 +34,11 @@ namespace AgentBridge
             var intervalMs = @params?["intervalMs"]?.Value<int>() ?? 0;
             var quality = @params?["quality"]?.Value<int>() ?? ScreenshotSupport.DefaultJpgQuality;
             var targets = PrepareTargets(@params, count);
-            ScreenshotSupport.CleanupPreviousScreenshots();
+            await Task.Run(ScreenshotSupport.CleanupPreviousScreenshots);
 
             if (count == 1)
             {
-                return Capture(targets[0], quality);
+                return await CaptureAsync(targets[0], quality);
             }
 
             var captures = new JArray();
@@ -48,7 +48,7 @@ namespace AgentBridge
                 {
                     await TaskExtension.Delay(intervalMs);
                 }
-                captures.Add(Capture(targets[index], quality));
+                captures.Add(await CaptureAsync(targets[index], quality));
             }
 
             return new
@@ -101,11 +101,11 @@ namespace AgentBridge
             return $"{stem}_{(index + 1).ToString("D" + digits)}{extension}";
         }
 
-        private static JObject Capture(
+        private static async Task<JObject> CaptureAsync(
             ScreenshotSupport.Target target,
             int quality)
         {
-            var capture = CaptureAndWriteJpg(target, quality);
+            var capture = await CaptureAndWriteJpgAsync(target, quality);
             return new JObject
             {
                 ["path"] = target.Path,
@@ -119,7 +119,7 @@ namespace AgentBridge
             };
         }
 
-        private static CaptureResult CaptureAndWriteJpg(
+        private static async Task<CaptureResult> CaptureAndWriteJpgAsync(
             ScreenshotSupport.Target target,
             int quality)
         {
@@ -148,13 +148,17 @@ namespace AgentBridge
                 ScreenshotSupport.ValidateSize(
                     texture.width, texture.height, GameViewUnavailableError, "Game View ");
 
-                var fileByteLength = ScreenshotSupport.WriteJpg(
-                    target,
-                    texture,
-                    quality,
-                    CaptureFailedError,
-                    "Game 视图截图 JPG 编码失败。");
-                return new CaptureResult(texture.width, texture.height, fileByteLength);
+                var width = texture.width;
+                var height = texture.height;
+                var bytes = texture.EncodeToJPG(quality);
+                if (bytes == null || bytes.Length == 0)
+                {
+                    throw new CommandException(CaptureFailedError, "Game 视图截图 JPG 编码失败。");
+                }
+                UnityEngine.Object.DestroyImmediate(texture);
+                texture = null;
+                var fileByteLength = await Task.Run(() => ScreenshotSupport.Write(target, bytes));
+                return new CaptureResult(width, height, fileByteLength);
             }
             catch (CommandException)
             {
@@ -259,7 +263,6 @@ namespace AgentBridge
                 {
                     ScreenshotSupport.FlipVertically(texture);
                 }
-                texture.Apply(false, false);
                 return texture;
             }
             catch
@@ -379,7 +382,7 @@ namespace AgentBridge
   ""properties"": {
     ""fileName"": { ""type"": ""string"", ""description"": ""可选 JPG 文件名;只能是文件名本身,不能包含目录或路径分隔符;缺省自动生成唯一文件名。"" },
     ""quality"": { ""type"": ""integer"", ""minimum"": 1, ""maximum"": 100, ""default"": 85, ""description"": ""JPG 编码质量。"" },
-    ""count"": { ""type"": ""integer"", ""minimum"": 1, ""maximum"": 100, ""default"": 1, ""description"": ""截图张数；大于 1 时按顺序返回 captures。"" },
+    ""count"": { ""type"": ""integer"", ""minimum"": 1, ""maximum"": 50, ""default"": 1, ""description"": ""截图张数；大于 1 时按顺序返回 captures。"" },
     ""intervalMs"": { ""type"": ""integer"", ""minimum"": 0, ""maximum"": 60000, ""default"": 0, ""description"": ""相邻截图的等待毫秒数；count=1 时忽略。"" }
   }
 }");

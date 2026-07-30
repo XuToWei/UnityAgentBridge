@@ -16,7 +16,7 @@ namespace AgentBridge
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
 
-        public Task<object> ExecuteAsync(JObject @params)
+        public async Task<object> ExecuteAsync(JObject @params)
         {
             var target = ScreenshotSupport.Prepare(@params, "scene_view");
             var quality = @params?["quality"]?.Value<int>() ?? ScreenshotSupport.DefaultJpgQuality;
@@ -31,7 +31,7 @@ namespace AgentBridge
             var height = @params?["height"]?.Value<int>() ??
                          Mathf.Max(1, Mathf.RoundToInt(view.position.height * pixelsPerPoint));
             ScreenshotSupport.ValidateSize(width, height);
-            ScreenshotSupport.CleanupPreviousScreenshots();
+            await Task.Run(ScreenshotSupport.CleanupPreviousScreenshots);
 
             long fileByteLength;
             var camera = view.camera;
@@ -46,15 +46,21 @@ namespace AgentBridge
                 camera.targetTexture = render;
                 camera.Render();
                 RenderTexture.active = render;
-                texture = new Texture2D(width, height, TextureFormat.RGBA32, false);
+                texture = new Texture2D(width, height, TextureFormat.RGB24, false);
                 texture.ReadPixels(new Rect(0, 0, width, height), 0, 0, false);
-                texture.Apply(false, false);
-                fileByteLength = ScreenshotSupport.WriteJpg(
-                    target,
-                    texture,
-                    quality,
-                    "CAPTURE_SCENE_VIEW_FAILED",
-                    "JPG 编码结果为空");
+                camera.targetTexture = previousTarget;
+                RenderTexture.active = previousActive;
+                RenderTexture.ReleaseTemporary(render);
+                render = null;
+                var bytes = texture.EncodeToJPG(quality);
+                if (bytes == null || bytes.Length == 0)
+                {
+                    throw new CommandException(
+                        "CAPTURE_SCENE_VIEW_FAILED", "JPG 编码结果为空");
+                }
+                UnityEngine.Object.DestroyImmediate(texture);
+                texture = null;
+                fileByteLength = await Task.Run(() => ScreenshotSupport.Write(target, bytes));
             }
             catch (CommandException)
             {
@@ -79,7 +85,7 @@ namespace AgentBridge
                 view.Repaint();
             }
 
-            return Task.FromResult<object>(new
+            return new
             {
                 path = target.Path,
                 relativePath = target.RelativePath,
@@ -89,7 +95,7 @@ namespace AgentBridge
                 width,
                 height,
                 fileByteLength
-            });
+            };
         }
 
         public JObject ParamsSchema { get; } = JObject.Parse(@"{

@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -6,6 +7,7 @@ using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.TestTools;
 
 namespace AgentBridge.Tests.ProductEditMode
 {
@@ -272,7 +274,19 @@ namespace AgentBridge.Tests.ProductEditMode
         }
 
         [Test]
-        public void ScreenshotSupport_WriteJpgDoesNotCleanOtherScreenshots()
+        public void ScreenshotSupport_LimitsRgba32CaptureToFourKClassPixelBudget()
+        {
+            Assert.DoesNotThrow(() =>
+                ScreenshotSupport.ValidateSize(4096, 2048));
+
+            var error = Assert.Throws<CommandException>(() =>
+                ScreenshotSupport.ValidateSize(4096, 2049));
+
+            Assert.That(error.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+        }
+
+        [UnityTest]
+        public IEnumerator ScreenshotSupport_WriteJpgDoesNotCleanOtherScreenshots()
         {
             var directory = System.IO.Path.Combine(
                 System.IO.Path.GetTempPath(),
@@ -280,22 +294,23 @@ namespace AgentBridge.Tests.ProductEditMode
             System.IO.Directory.CreateDirectory(directory);
             var oldPath = System.IO.Path.Combine(directory, "old.jpg");
             System.IO.File.WriteAllText(oldPath, "previous screenshot");
-            var texture = new Texture2D(1, 1, TextureFormat.RGBA32, false);
+            var texture = new Texture2D(1, 1, TextureFormat.RGB24, false);
             try
             {
                 texture.SetPixel(0, 0, Color.red);
-                texture.Apply(false, false);
                 var targetPath = System.IO.Path.Combine(directory, "current.jpg");
                 var target = new ScreenshotSupport.Target(
                     "current.jpg",
                     targetPath);
 
-                var byteLength = ScreenshotSupport.WriteJpg(
-                    target,
-                    texture,
-                    82,
-                    "ENCODE_FAILED",
-                    "encode failed");
+                var bytesToWrite = texture.EncodeToJPG(82);
+                var writeTask = Task.Run(
+                    () => ScreenshotSupport.Write(target, bytesToWrite));
+                while (!writeTask.IsCompleted)
+                {
+                    yield return null;
+                }
+                var byteLength = writeTask.GetAwaiter().GetResult();
 
                 Assert.That(byteLength, Is.GreaterThan(0));
                 Assert.That(System.IO.File.Exists(targetPath), Is.True);
@@ -333,6 +348,14 @@ namespace AgentBridge.Tests.ProductEditMode
                 out _,
                 out var countError), Is.False);
             Assert.That(countError.Error.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+
+            Assert.That(CommandDispatcher.TryPrepare(
+                "capture_game_view",
+                new JObject { ["count"] = 51 },
+                CommandInvocationPolicy.Single,
+                out _,
+                out var maxCountError), Is.False);
+            Assert.That(maxCountError.Error.Code, Is.EqualTo(ErrorCodes.InvalidParams));
 
             Assert.That(CommandDispatcher.TryPrepare(
                 "capture_game_view",
