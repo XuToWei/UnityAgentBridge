@@ -85,18 +85,19 @@ namespace AgentBridge
                 return;
             }
 
-            if (!IsRunning)
-            {
-                Stop();
-                return;
-            }
-
             var now = EditorApplication.timeSinceStartup;
             if ((now - s_LastPollTime) * 1000.0 < BridgeSettings.PollIntervalMs)
             {
                 return;
             }
             s_LastPollTime = now;
+
+            if (!IsRunning)
+            {
+                Stop();
+                return;
+            }
+
             var channel = s_Channel;
             s_IsProcessing = true;
 
