@@ -1,5 +1,4 @@
 using System.Threading.Tasks;
-using System;
 using System.Linq;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
@@ -20,20 +19,15 @@ namespace AgentBridge
             var main = AssetDatabase.LoadMainAssetAtPath(path);
             var includeProperties = SceneCommandSupport.ReadBool(@params, "includeProperties", false);
             var limit = @params?["subAssetLimit"]?.Value<int>() ?? 100;
-            var all = AssetDatabase.IsValidFolder(path)
+            var subAssetEntries = AssetDatabase.IsValidFolder(path)
                 ? new UnityEngine.Object[0]
-                : AssetDatabase.LoadAllAssetsAtPath(path).Where(asset => asset != null).ToArray();
-            var ordered = all.Select(asset => new
-                {
-                    asset,
-                    key = GetLocalId(asset)
-                })
-                .OrderBy(entry => entry.key)
-                .ThenBy(entry => entry.asset.name, StringComparer.Ordinal)
+                : AssetDatabase.LoadAllAssetsAtPath(path)
+                    .Where(asset => asset != null && asset != main)
+                    .ToArray();
+            var subAssets = subAssetEntries
+                .Take(limit)
+                .Select(AssetReadSupport.DescribeObject)
                 .ToArray();
-            var subAssetEntries = ordered.Where(entry => entry.asset != main).ToArray();
-            var subAssets = subAssetEntries.Take(limit)
-                .Select(entry => AssetReadSupport.DescribeObject(entry.asset)).ToArray();
             var importer = AssetImporter.GetAtPath(path);
 
             return Task.FromResult<object>(new
@@ -53,12 +47,6 @@ namespace AgentBridge
                     properties = includeProperties ? PropertySerializer.SerializeTopLevel(importer) : null
                 }
             });
-        }
-
-        private static long GetLocalId(UnityEngine.Object asset)
-        {
-            AssetDatabase.TryGetGUIDAndLocalFileIdentifier(asset, out _, out long localId);
-            return localId;
         }
 
         public JObject ParamsSchema { get; } = JObject.Parse(@"{
