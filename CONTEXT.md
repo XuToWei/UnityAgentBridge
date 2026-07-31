@@ -25,6 +25,14 @@ _Avoid_: endpoint, action
 The currently registered and enabled commands plus their schemas and batch policies. Its `commandsVersion` changes whenever that visible content changes.
 _Avoid_: command catalog, command list cache
 
+**Profiler capture**:
+CPU profiling frames buffered or loaded in the Unity Profiler Window. An automated Capture has a stable `captureId` and may also be persisted as `.agentbridge/profiler/<captureId>.data`. Frame overview, hierarchy analysis, and window comparison are separate Commands; this is distinct from a Memory Profiler snapshot or Profile Analyzer analysis.
+_Avoid_: profile, profile data
+
+**Profiler window**:
+A bounded, navigated sequence of actual frames within one Profiler capture. Baseline and candidate windows may have different frame counts, so comparisons use per-frame averages or percentiles rather than raw sums.
+_Avoid_: frame range, sample interval
+
 **Batch**:
 One command containing up to 50 prevalidated child commands that execute sequentially. A Batch is deliberately non-atomic even when its Undo operations are collapsed.
 _Avoid_: transaction, bulk request

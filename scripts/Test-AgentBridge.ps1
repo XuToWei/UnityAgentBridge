@@ -687,6 +687,49 @@ Invoke-BridgeErrorCases @(
     @{ CaseId = "console.search_logs.query_too_long"; Command = "search_logs"; Params = @{ query = ("x" * 4097) }; ExpectedCode = "INVALID_PARAMS"; IdPrefix = "logs-query-long" }
 )
 
+Invoke-TestCase "profiling.get_profiler_data.single_frame" {
+    $exchange = Invoke-BridgeRequest "get_profiler_data" @{
+        frameCount = 1
+        limit = 5
+    } "profiler-data"
+    Assert-Ok $exchange
+
+    $result = $exchange.Response.result
+    Assert-True ($null -ne $result.PSObject.Properties['available']) "profiler result missing available"
+    Assert-True ($null -ne $result.PSObject.Properties['hotspots']) "profiler result missing hotspots"
+    $hotspots = @($result.hotspots)
+    Assert-True ($hotspots.Count -le 5) "get_profiler_data ignored limit"
+    if (-not [bool]$result.available) {
+        Assert-Equal $hotspots.Count 0 "unavailable profiler capture returned hotspots"
+    }
+    return $exchange
+}
+
+Invoke-TestCase "profiling.get_profiler_overview.default" {
+    $exchange = Invoke-BridgeRequest "get_profiler_overview" @{
+        frameCount = 5
+        slowestLimit = 3
+        spikeLimit = 3
+    } "profiler-overview"
+    Assert-Ok $exchange
+
+    $result = $exchange.Response.result
+    Assert-True ($null -ne $result.PSObject.Properties['available']) "profiler overview missing available"
+    Assert-True ($null -ne $result.PSObject.Properties['slowestFrames']) "profiler overview missing slowestFrames"
+    Assert-True (@($result.slowestFrames).Count -le 3) "get_profiler_overview ignored slowestLimit"
+    return $exchange
+}
+
+Invoke-BridgeErrorCases @(
+    @{ CaseId = "profiling.get_profiler_data.invalid_frame_count"; Command = "get_profiler_data"; Params = @{ frameCount = 0 }; ExpectedCode = "INVALID_PARAMS"; IdPrefix = "profiler-frame-count-bad" }
+    @{ CaseId = "profiling.get_profiler_data.invalid_sort"; Command = "get_profiler_data"; Params = @{ sortBy = "not-a-profiler-metric" }; ExpectedCode = "INVALID_PARAMS"; IdPrefix = "profiler-sort-bad" }
+    @{ CaseId = "profiling.get_profiler_data.conflicting_thread_selectors"; Command = "get_profiler_data"; Params = @{ threadIndex = 0; threadSelector = @{ mode = "index"; index = 0 } }; ExpectedCode = "INVALID_PARAMS"; IdPrefix = "profiler-thread-conflict" }
+    @{ CaseId = "profiling.get_profiler_data.unknown_field"; Command = "get_profiler_data"; Params = @{ unexpected = $true }; ExpectedCode = "INVALID_PARAMS"; IdPrefix = "profiler-field-bad" }
+    @{ CaseId = "profiling.get_profiler_overview.invalid_frame_count"; Command = "get_profiler_overview"; Params = @{ frameCount = 0 }; ExpectedCode = "INVALID_PARAMS"; IdPrefix = "profiler-overview-bad" }
+    @{ CaseId = "profiling.compare_profiler_windows.missing_candidate"; Command = "compare_profiler_windows"; Params = @{ baseline = @{} }; ExpectedCode = "INVALID_PARAMS"; IdPrefix = "profiler-compare-bad" }
+    @{ CaseId = "profiling.capture_profiler.invalid_frame_count"; Command = "capture_profiler"; Params = @{ action = "capture"; frameCount = 0 }; ExpectedCode = "INVALID_PARAMS"; IdPrefix = "profiler-capture-bad" }
+)
+
 Invoke-TestCase "compilation.get_compile_result" {
     $exchange = Invoke-BridgeRequest "get_compile_result" @{} "compile-result"
     Assert-Ok $exchange

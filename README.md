@@ -67,9 +67,12 @@ The package currently includes these built-in commands, grouped by `ICommandHand
 - **Capture** — `capture_game_view`, `capture_scene_view`
 - **Console** — `search_logs`, `clear_logs`
 - **Compilation** — `recompile`, `get_compile_result`
+- **Profiling** — `get_profiler_overview`, `get_profiler_data`, `compare_profiler_windows`, `capture_profiler`
 - **Testing** — `run_tests`, `get_test_result`
 
 Capture commands encode JPG files with configurable `quality` (default 85) and remove old screenshots and screenshot temp files from `.agentbridge/screenshots/` before capture starts. A capture sequence cleans once at the start of the sequence.
+
+The profiling workflow has four commands. `capture_profiler` records actual frames and saves a stable `captureId`; its result distinguishes frames observed while recording from frames still retained in the saved history, and `complete` is true only when the retained snapshot meets the request. `get_profiler_overview` reads frame-level P50/P95/P99, slowest frames, and automatic spikes without scanning the hierarchy; `get_profiler_data` aggregates CPU hotspots for one or paged multiple threads with category, threshold, and optional distribution/trend analysis; and `compare_profiler_windows` compares baseline and candidate windows from the current or two saved captures. Read commands restore the original Profiler buffer after temporarily loading a `captureId`. `frameCount=1` remains the single-frame drill-down. Exact schemas are discoverable through runtime `list_commands`. These commands do not cover Memory Profiler, GPU Timeline, or automatic code changes.
 
 This list is a package overview. `list_commands` remains the canonical command interface: it returns the live enabled command set, descriptions, parameter schemas, batch policies, and `commandsVersion`; do not copy that metadata into an agent prompt or integration.
 

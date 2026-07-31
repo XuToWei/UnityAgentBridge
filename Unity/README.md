@@ -2,7 +2,7 @@
 
 让 AI Agent 通过**文件**驱动 Unity 编辑器执行命令。请求/响应 JSON 文件 + `EditorApplication.update` 轮询 + 可扩展的 `ICommandHandler` 框架。
 
-包内已包含协议/文件通道、命令发现与管理器，以及 scenes、inspection、mutation、prefab、assets、PlayMode、capture、console、compilation、testing 等内置命令。驱动桥接见 [`AGENT.md`](AGENT.md)；实际可用命令始终以运行时 `list_commands` 为准。
+包内已包含协议/文件通道、命令发现与管理器，以及 scenes、inspection、mutation、prefab、assets、PlayMode、capture、console、compilation、profiling、testing 等内置命令。驱动桥接见 [`AGENT.md`](AGENT.md)；实际可用命令始终以运行时 `list_commands` 为准。
 
 ## 安装
 
@@ -29,6 +29,8 @@ https://github.com/XuToWei/UnityAgentBridge.git?path=Unity
 
 请求上限为 1 MiB，`params` 必须是 object，并会在执行 handler 前按该命令的 `paramsSchema` 校验。
 响应按 UTF-8 计算固定上限为 1 MiB；超限结果会改为紧凑的 `RESPONSE_TOO_LARGE` 错误响应。
+
+Profiler 工作流包含 `capture_profiler`、`get_profiler_overview`、`get_profiler_data` 与 `compare_profiler_windows`：自动录制并保存稳定 `captureId`（响应区分 observed/retained，只有最终快照保留足量帧时 complete=true），快速定位 P50/P95/P99、慢帧和 spike，再按线程/Category/阈值深入热点，或比较当前/已保存 capture 的 baseline/candidate 窗口。读命令临时加载 `captureId` 后会恢复原 Profiler 缓冲。`frameCount=1` 用于单帧深入分析；精确参数与 schema 以运行时 `list_commands` 为准。这些命令不等同于 Memory Profiler 或 Profile Analyzer。
 
 截图命令使用可配置 `quality`（默认 85）的 JPG 编码，并在开始捕获前清理 `.agentbridge/screenshots/` 中的旧截图和截图临时文件；连续截图只在整批开始时清理一次。
 

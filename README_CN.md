@@ -66,9 +66,12 @@ agent <── .agentbridge/response.json <──rename── response.json.tmp
 - **Capture**——`capture_game_view`、`capture_scene_view`
 - **Console**——`search_logs`、`clear_logs`
 - **Compilation**——`recompile`、`get_compile_result`
+- **Profiling**——`get_profiler_overview`、`get_profiler_data`、`compare_profiler_windows`、`capture_profiler`
 - **Testing**——`run_tests`、`get_test_result`
 
 Capture 命令使用可配置 `quality`（默认 85）的 JPG 编码，并在开始捕获前清理 `.agentbridge/screenshots/` 中的旧截图和截图临时文件；连续截图只在整批开始时清理一次。
+
+Profiler 工作流分为四步：`capture_profiler` 自动录制实际帧并保存稳定 `captureId`，结果会区分录制期间观察到的 `observed` 与最终快照仍保留的 `retained`，只有后者达到请求数量时 `complete=true`；`get_profiler_overview` 只读帧级 P50/P95/P99、最慢帧与自动 spike，不扫描调用树；`get_profiler_data` 按单线程或分页多线程聚合 CPU 热点，支持 Category、阈值及按需分布/趋势；`compare_profiler_windows` 比较当前或两个已保存 capture 的 baseline/candidate 窗口。读命令临时加载 `captureId` 后会恢复原 Profiler 缓冲。`frameCount=1` 仍用于单帧深入分析，精确参数与 schema 以运行时 `list_commands` 为准。这些命令不包含 Memory Profiler、GPU Timeline 或自动改代码。
 
 以上列表仅用于包能力概览。`list_commands` 仍是命令集的 canonical interface：它返回当前启用的命令、描述、参数 schema、batch policy 与 `commandsVersion`；Agent 提示词和集成代码不应复制这些 metadata。
 
