@@ -177,7 +177,7 @@ A handler defines its unique `Command`, `Description`, `Group`, `CanDisable`, `B
 
 Set `BatchMode` to `NotAllowed`, `Allowed`, or `AllowedWithUndoCollapse`. The last option requires the handler to follow Unity's Undo contract completely.
 
-The package does not maintain an `extension.json` install/uninstall protocol. Add or remove extension code through UPM or project assemblies.
+Command Manager enable/disable controls the runtime availability of registered commands.
 
 ---
 

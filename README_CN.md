@@ -176,7 +176,7 @@ Handler 需要定义唯一的 `Command`，以及 `Description`、`Group`、`CanD
 
 `BatchMode` 可选 `NotAllowed`、`Allowed` 或 `AllowedWithUndoCollapse`。最后一种要求 Handler 完整遵守 Unity Undo 契约。
 
-包不维护 `extension.json` 安装/卸载协议。请通过 UPM 或工程程序集添加、移除扩展代码。
+命令管理器中的启用/禁用控制已注册命令的运行时可用性。
 
 ---
 

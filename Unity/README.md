@@ -82,7 +82,7 @@ public sealed class MyHandler : ICommandHandler
     // 抛 CommandException(code, msg) 产生自定义错误码;抛其他异常 → HANDLER_EXCEPTION。
 }
 ```
-放进任意被编译的程序集即自动注册,无需改框架。每个 handler 通过 `CanDisable` 自行声明是否允许在命令管理器禁用；协议必需的 `ping` 与 `list_commands` 返回 `false`。当前包不维护 `extension.json` 本地安装/卸载协议;扩展代码通过 UPM 或工程程序集添加、移除。
+放进任意被编译的程序集即自动注册,无需改框架。每个 handler 通过 `CanDisable` 自行声明是否允许在命令管理器禁用；协议必需的 `ping` 与 `list_commands` 返回 `false`。命令管理器中的启用/禁用控制已注册命令的运行时可用性。
 每个 handler 必须显式声明 `BatchMode`：`NotAllowed` 禁止作为 batch 子命令，`Allowed` 允许进入 batch，
 `AllowedWithUndoCollapse` 还允许并入 batch 的单一 Undo 组，并要求 handler 自身完整遵守 Unity Undo 契约。
 
