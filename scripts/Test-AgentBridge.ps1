@@ -483,6 +483,25 @@ Invoke-TestCase "meta.ping" {
     return $exchange
 }
 
+Invoke-TestCase "meta.list_agent_methods" {
+    $exchange = Invoke-BridgeRequest "list_agent_methods" @{} "list-agent-methods"
+    Assert-Ok $exchange
+    Assert-True ($null -ne $exchange.Response.result.methods) "list_agent_methods methods missing"
+    foreach ($method in @($exchange.Response.result.methods)) {
+        Assert-True (-not [string]::IsNullOrWhiteSpace([string]$method.id)) "AgentCallable method id must be non-empty"
+        Assert-True (-not [string]::IsNullOrWhiteSpace([string]$method.description)) "AgentCallable method description must be non-empty"
+    }
+    return $exchange
+}
+
+Invoke-TestCase "mutation.invoke_agent_method.missing" {
+    $exchange = Invoke-BridgeRequest "invoke_agent_method" @{
+        method = "__AgentBridge.Acceptance__::Missing"
+    } "invoke-agent-method-missing"
+    Assert-Error $exchange "METHOD_NOT_FOUND"
+    return $exchange
+}
+
 Invoke-TestCase "protocol.invalid_json" {
     $exchange = Invoke-RawBridgeRequest "" "{"
     Assert-Error $exchange "INVALID_REQUEST"

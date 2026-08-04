@@ -56,10 +56,10 @@ agent <── .agentbridge/response.json <──rename── response.json.tmp
 
 包当前包含以下内置命令，按 `ICommandHandler.Group` 分组：
 
-- **Meta**——`ping`、`list_commands`
+- **Meta**——`ping`、`list_commands`、`list_agent_methods`
 - **Inspection**——`get_hierarchy`、`get_object`、`get_selection`、`get_asset`、`get_asset_dependencies`、`list_assets`
 - **Scenes**——`list_scenes`、`open_scene`、`save_scene`、`close_scene`、`set_active_scene`
-- **Mutation**——`create_object`、`update_object`、`delete_object`、`add_component`、`remove_component`、`set_property`、`set_selection`、`frame_object`、`set_game_view_resolution`、`invoke_menu`、`undo`、`redo`、`batch`
+- **Mutation**——`create_object`、`update_object`、`delete_object`、`add_component`、`remove_component`、`set_property`、`set_selection`、`frame_object`、`set_game_view_resolution`、`invoke_menu`、`invoke_agent_method`、`undo`、`redo`、`batch`
 - **Prefab**——`prefab`
 - **Assets**——`create_asset`、`import_asset`、`move_asset`、`delete_asset`、`set_importer_property`、`refresh`
 - **PlayMode**——`play_scene`、`pause`、`resume`、`step`
@@ -110,6 +110,29 @@ Profiler 工作流分为四步：`capture_profiler` 自动录制实际帧并保�
 
 ## 添加自定义命令
 
+只需暴露一个无参静态方法时，可用 `AgentCallable` 作为显式调用授权：
+
+```csharp
+using AgentBridge;
+
+public static class ProjectAgentMethods
+{
+    [AgentCallable("重新生成当前场景的导航数据")]
+    private static void RebuildNavigation()
+    {
+        // Unity Editor 操作
+    }
+}
+```
+
+`list_agent_methods` 返回方法说明及自动生成的 ID
+`DeclaringType.FullName::MethodName`，`invoke_agent_method` 按完整 ID 调用。方法必须是
+无参、非泛型 `static`，同步返回值会被忽略；返回 `Task` / `Task<T>` 时等待完成并忽略结果。
+`async void` 不会注册。方法自身负责 Undo、dirty/save 和资源路径安全，调用命令不允许进入 batch。
+特性位于 Editor 程序集；调用运行时代码时，应在 Editor 程序集中添加一层静态包装。
+
+需要参数、结构化结果或明确 batch/Undo 策略时，实现完整 `ICommandHandler`：
+
 ```csharp
 using AgentBridge;
 using Newtonsoft.Json.Linq;
@@ -132,7 +155,7 @@ public sealed class SayHelloHandler : ICommandHandler
 
 `ICommandHandler` 实现经反射 / `TypeCache` 自动注册,无需手动接线或注册特性。成员:`Command`(唯一名)、`Description`、`Group`(窗口分组)、`CanDisable`、`BatchMode`、`ExecuteAsync`、`ParamsSchema`。`ExecuteAsync` 返回 `Task<object>` 并支持普通 `async`/`await`。`BatchMode` 可选 `NotAllowed`、`Allowed` 或 `AllowedWithUndoCollapse`。抛 `CommandException(code, message)` 返回带类型的错误。
 
-当前扩展 Seam 只有 `ICommandHandler`;包不维护 `extension.json` 本地安装/卸载协议。请通过 UPM 或工程程序集添加、移除扩展代码。
+扩展代码可选择轻量的 `AgentCallable` 无参方法或完整 `ICommandHandler`；包不维护 `extension.json` 本地安装/卸载协议。请通过 UPM 或工程程序集添加、移除扩展代码。
 
 ---
 

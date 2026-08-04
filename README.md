@@ -57,10 +57,10 @@ Responses are capped at a fixed 1 MiB of UTF-8. An oversized command result is r
 
 The package currently includes these built-in commands, grouped by `ICommandHandler.Group`:
 
-- **Meta** — `ping`, `list_commands`
+- **Meta** — `ping`, `list_commands`, `list_agent_methods`
 - **Inspection** — `get_hierarchy`, `get_object`, `get_selection`, `get_asset`, `get_asset_dependencies`, `list_assets`
 - **Scenes** — `list_scenes`, `open_scene`, `save_scene`, `close_scene`, `set_active_scene`
-- **Mutation** — `create_object`, `update_object`, `delete_object`, `add_component`, `remove_component`, `set_property`, `set_selection`, `frame_object`, `set_game_view_resolution`, `invoke_menu`, `undo`, `redo`, `batch`
+- **Mutation** — `create_object`, `update_object`, `delete_object`, `add_component`, `remove_component`, `set_property`, `set_selection`, `frame_object`, `set_game_view_resolution`, `invoke_menu`, `invoke_agent_method`, `undo`, `redo`, `batch`
 - **Prefab** — `prefab`
 - **Assets** — `create_asset`, `import_asset`, `move_asset`, `delete_asset`, `set_importer_property`, `refresh`
 - **PlayMode** — `play_scene`, `pause`, `resume`, `step`
@@ -111,6 +111,31 @@ Scene-object responses use canonical round-trippable paths. Each GameObject name
 
 ## Add your own command
 
+For a lightweight no-argument entry point, use `AgentCallable` as an explicit invocation grant:
+
+```csharp
+using AgentBridge;
+
+public static class ProjectAgentMethods
+{
+    [AgentCallable("rebuild navigation data for the current scene")]
+    private static void RebuildNavigation()
+    {
+        // Unity Editor work
+    }
+}
+```
+
+`list_agent_methods` returns the description and generated
+`DeclaringType.FullName::MethodName` ID; `invoke_agent_method` invokes that exact ID. The method must
+be non-generic, parameterless, and `static`. Synchronous return values are ignored; `Task` and
+`Task<T>` are awaited and their results are ignored. `async void` methods are not registered. The
+method owns its Undo, dirty/save, and asset-path safety, and invocation is not allowed in a batch.
+The attribute is Editor-only; expose runtime logic through a thin static wrapper in an Editor assembly.
+
+Use a full `ICommandHandler` when the operation needs parameters, a structured result, or an explicit
+batch/Undo policy:
+
 ```csharp
 using AgentBridge;
 using Newtonsoft.Json.Linq;
@@ -133,7 +158,7 @@ public sealed class SayHelloHandler : ICommandHandler
 
 `ICommandHandler` implementations are auto-registered via reflection / `TypeCache` — no manual wiring and no registration attribute. Members: `Command` (unique name), `Description`, `Group` (window grouping), `CanDisable`, `BatchMode`, `ExecuteAsync`, and `ParamsSchema`. `ExecuteAsync` returns `Task<object>` and may use normal `async`/`await`. Choose `NotAllowed`, `Allowed`, or `AllowedWithUndoCollapse` for `BatchMode`. Throw `CommandException(code, message)` to return a typed error.
 
-`ICommandHandler` is the only extension seam. The package does not maintain a local `extension.json` install/uninstall protocol; add or remove extension code through UPM or project assemblies.
+Extensions may use a lightweight parameterless `AgentCallable` method or a full `ICommandHandler`. The package does not maintain a local `extension.json` install/uninstall protocol; add or remove extension code through UPM or project assemblies.
 
 ---
 

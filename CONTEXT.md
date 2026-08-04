@@ -25,6 +25,10 @@ _Avoid_: endpoint, action
 The currently registered and enabled commands plus their schemas and batch policies. Its `commandsVersion` changes whenever that visible content changes.
 _Avoid_: command catalog, command list cache
 
+**Agent-callable method**:
+A parameterless static Editor method explicitly exposed with `AgentCallableAttribute`. Its external identity is `DeclaringType.FullName::MethodName`; `list_agent_methods` discovers it and `invoke_agent_method` invokes it. Synchronous return values are ignored, while `Task` and `Task<T>` are awaited and their results are ignored. This lightweight seam is not a Command and does not support Batch or automatic Undo.
+_Avoid_: RPC endpoint, arbitrary reflection call, dynamic command
+
 **Profiler capture**:
 CPU profiling frames buffered or loaded in the Unity Profiler Window. An automated Capture has a stable `captureId` and may also be persisted as `.agentbridge/profiler/<captureId>.data`. Frame overview, hierarchy analysis, and window comparison are separate Commands; this is distinct from a Memory Profiler snapshot or Profile Analyzer analysis.
 _Avoid_: profile, profile data
