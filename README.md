@@ -169,7 +169,13 @@ public sealed class SayHelloHandler : ICommandHandler
 }
 ```
 
-`ICommandHandler` implementations are auto-registered via reflection / `TypeCache` — no manual wiring and no registration attribute. Members: `Command` (unique name), `Description`, `Group` (window grouping), `CanDisable`, `BatchMode`, `ExecuteAsync`, and `ParamsSchema`. `ExecuteAsync` returns `Task<object>` and may use normal `async`/`await`. Choose `NotAllowed`, `Allowed`, or `AllowedWithUndoCollapse` for `BatchMode`. Throw `CommandException(code, message)` to return a typed error.
+`TypeCache` discovers `ICommandHandler` implementations automatically. No registration attribute or manual wiring is required.
+
+A handler defines its unique `Command`, `Description`, `Group`, `CanDisable`, `BatchMode`, `ExecuteAsync`, and `ParamsSchema`.
+
+`ExecuteAsync` returns `Task<object>` and supports normal `async`/`await`. Throw `CommandException(code, message)` to return a typed error.
+
+Set `BatchMode` to `NotAllowed`, `Allowed`, or `AllowedWithUndoCollapse`. The last option requires the handler to follow Unity's Undo contract completely.
 
 The package does not maintain an `extension.json` install/uninstall protocol. Add or remove extension code through UPM or project assemblies.
 

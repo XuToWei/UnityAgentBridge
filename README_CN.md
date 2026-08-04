@@ -108,32 +108,45 @@ Profiler 工作流分为四步：`capture_profiler` 自动录制实际帧并保�
 
 `Window ▸ Agent Bridge` 用 Unity `TypeCache` 列出所有命令(内置 + 扩展),按**功能分组**(`ICommandHandler.Group`),表头点击排序、分组筛选、批量启停;顶部工具条启停桥接主机、切换后台运行。Exchange 执行期间不能停止桥接；终态响应发布后，停止开关会重新可用。任意命令可打勾启停——被禁用的命令**从 `list_commands` 隐藏**、分发时返回 `COMMAND_DISABLED`(禁用名单存 `EditorPrefs`,按工程命名空间隔离)。每个 handler 通过 `CanDisable` 自行声明策略；协议必需的 `ping` 与 `list_commands` 返回 `false`。
 
-## 添加自定义命令
+## 扩展 Bridge
 
-只需暴露一个无参静态方法时，可用 `AgentCallable` 作为显式调用授权：
+选择能够满足操作需求的最小扩展接口：无参操作使用 `AgentCallable`，需要完整命令契约时实现 `ICommandHandler`。
+
+### 暴露无参方法
+
+项目专用的 Editor 操作如果不需要参数或结构化结果，可以使用 `AgentCallable`。添加该特性即表示明确授权 Agent 调用这个方法。
 
 ```csharp
 using AgentBridge;
+using System.Threading.Tasks;
 
 public static class ProjectAgentMethods
 {
     [AgentCallable("重新生成当前场景的导航数据", 300)]
-    private static void RebuildNavigation()
+    private static Task RebuildNavigation()
     {
-        // Unity Editor 操作
+        return ProjectNavigation.RebuildAsync();
     }
 }
 ```
 
-`list_agent_methods` 返回方法说明及自动生成的 ID
-`DeclaringType.FullName::MethodName`、`timeoutSeconds`（默认 30，范围 1..3600），
-`invoke_agent_method` 按完整 ID 调用。Agent 应使用该方法的超时值等待响应；它只是等待提示，
-不会取消 Unity 侧 Task。方法必须是
-无参、非泛型 `static`，同步返回值会被忽略；返回 `Task` / `Task<T>` 时等待完成并忽略结果。
-`async void` 不会注册。方法自身负责 Undo、dirty/save 和资源路径安全，调用命令不允许进入 batch。
-特性位于 Editor 程序集；调用运行时代码时，应在 Editor 程序集中添加一层静态包装。
+构造函数第一个参数是展示给 Agent 的方法说明。第二个参数 `timeoutSeconds` 可选，默认 30，取值范围为 1..3600。
 
-需要参数、结构化结果或明确 batch/Undo 策略时，实现完整 `ICommandHandler`：
+Agent 先调用 `list_agent_methods`，再把返回的 `DeclaringType.FullName::MethodName` ID 传给 `invoke_agent_method`。
+
+`timeoutSeconds` 只决定 Agent 等待 Exchange 的时长，不会取消 Unity 任务。等待超时后，Agent 必须继续监控同一个 Exchange，不能发布新请求。
+
+可调用方法必须遵守以下规则：
+
+- 方法必须是无参、非泛型 `static`；允许 public 或 private。
+- 同步返回值会被忽略；`Task` 和 `Task<T>` 会被等待，其结果随后被忽略。
+- `async void` 无法可靠观察完成状态和异常，因此不会注册。
+- 调用不会进入 Batch，也不提供自动 Undo、dirty、save 或资源路径处理。
+- 该特性仅用于 Editor。调用 Runtime 逻辑时，应在 Editor 程序集中添加一层静态包装。
+
+### 实现完整命令
+
+操作需要参数、结构化结果、Schema 校验、命令级启停行为或明确的 Batch/Undo 策略时，实现 `ICommandHandler`。
 
 ```csharp
 using AgentBridge;
@@ -155,9 +168,15 @@ public sealed class SayHelloHandler : ICommandHandler
 }
 ```
 
-`ICommandHandler` 实现经反射 / `TypeCache` 自动注册,无需手动接线或注册特性。成员:`Command`(唯一名)、`Description`、`Group`(窗口分组)、`CanDisable`、`BatchMode`、`ExecuteAsync`、`ParamsSchema`。`ExecuteAsync` 返回 `Task<object>` 并支持普通 `async`/`await`。`BatchMode` 可选 `NotAllowed`、`Allowed` 或 `AllowedWithUndoCollapse`。抛 `CommandException(code, message)` 返回带类型的错误。
+`TypeCache` 会自动发现 `ICommandHandler` 实现，无需注册特性或手动接线。
 
-扩展代码可选择轻量的 `AgentCallable` 无参方法或完整 `ICommandHandler`；包不维护 `extension.json` 本地安装/卸载协议。请通过 UPM 或工程程序集添加、移除扩展代码。
+Handler 需要定义唯一的 `Command`，以及 `Description`、`Group`、`CanDisable`、`BatchMode`、`ExecuteAsync` 和 `ParamsSchema`。
+
+`ExecuteAsync` 返回 `Task<object>`，支持普通 `async`/`await`。抛出 `CommandException(code, message)` 可返回带类型的错误。
+
+`BatchMode` 可选 `NotAllowed`、`Allowed` 或 `AllowedWithUndoCollapse`。最后一种要求 Handler 完整遵守 Unity Undo 契约。
+
+包不维护 `extension.json` 安装/卸载协议。请通过 UPM 或工程程序集添加、移除扩展代码。
 
 ---
 
