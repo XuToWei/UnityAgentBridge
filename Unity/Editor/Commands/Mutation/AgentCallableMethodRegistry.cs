@@ -252,11 +252,15 @@ namespace AgentBridge
                 {
                     await task;
                 }
-                else if (typeof(Task).IsAssignableFrom(Method.ReturnType))
+                else if (returnValue != null && HasPublicGetAwaiter(returnValue.GetType()))
                 {
-                    throw new InvalidOperationException("方法声明返回 Task,但实际返回 null");
+                    await AwaitDynamic(returnValue);
                 }
-                // 所有同步返回值以及 Task<T> 的 T 都故意忽略。
+                else if (HasPublicGetAwaiter(Method.ReturnType))
+                {
+                    throw new InvalidOperationException("方法声明返回可等待类型,但实际返回 null");
+                }
+                // 所有同步返回值以及 Awaitable.GetResult() 的结果都故意忽略。
             }
             catch (TargetInvocationException ex) when (ex.InnerException != null)
             {
@@ -270,6 +274,29 @@ namespace AgentBridge
             {
                 throw ConvertException(ex);
             }
+        }
+
+        private static bool HasPublicGetAwaiter(Type type)
+        {
+            if (type == null)
+            {
+                return false;
+            }
+
+            var getAwaiter = type.GetMethod(
+                "GetAwaiter",
+                BindingFlags.Public | BindingFlags.Instance,
+                null,
+                Type.EmptyTypes,
+                null);
+            return getAwaiter != null &&
+                   !getAwaiter.IsGenericMethod &&
+                   getAwaiter.ReturnType != typeof(void);
+        }
+
+        private static async Task AwaitDynamic(object value)
+        {
+            await (dynamic)value;
         }
 
         private CommandException ConvertException(Exception exception)

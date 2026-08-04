@@ -43,7 +43,7 @@
 - `description`：方法用途说明。
 - `timeoutSeconds`：等待该方法 Exchange 的预算；缺省 30 秒，范围 1..3600 秒。
 
-`timeoutSeconds` 只控制 Agent 的等待预算，不会取消 Unity 方法或其 `Task`。如果预算耗尽但
+`timeoutSeconds` 只控制 Agent 的等待预算，不会取消 Unity 方法或其 Awaitable。如果预算耗尽但
 Exchange 尚未结束，报告方法仍在运行并继续轮询原 `response.json`。不得发布第二条请求，
 也不得修改 `processing.json`。
 
@@ -88,7 +88,7 @@ Exchange 尚未结束，报告方法仍在运行并继续轮询原 `response.jso
 | `UNKNOWN_COMMAND` | 刷新 command set，再换新 id 决定是否重发 |
 | `COMMAND_DISABLED` | 不要绕过禁用状态；让用户在命令管理器启用 |
 | `METHOD_NOT_FOUND` | 重新调用 `list_agent_methods`，使用返回的完整方法 ID |
-| `METHOD_EXECUTION_FAILED` | 方法或其 Task 执行失败；根据 message 定位实现，不要盲目重试 |
+| `METHOD_EXECUTION_FAILED` | 方法或其 Awaitable 执行失败；根据 message 定位实现，不要盲目重试 |
 | `HANDLER_EXCEPTION` | 根据 message 定位 implementation；不要盲目重试 |
 | `INTERRUPTED` | 副作用状态未知；先检查实际状态，再决定是否用新 id 重试 |
 | `RESPONSE_TOO_LARGE` | 缩小 root、depth、limit 等范围后换新 id |

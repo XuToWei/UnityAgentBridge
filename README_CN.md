@@ -75,7 +75,7 @@ Profiler 工作流分为四步：`capture_profiler` 自动录制实际帧并保�
 
 以上列表仅用于包能力概览。`list_commands` 仍是命令集的 canonical interface：它返回当前启用的命令、描述、参数 schema、batch policy 与 `commandsVersion`；Agent 提示词和集成代码不应复制这些 metadata。
 
-源码导航：`Channel/` 负责文件 exchange，`Dispatch/` 负责命令发现与调用，`Commands/` 负责 Unity 操作，`Scene/` 负责可往返引用和序列化属性，`Testing/` 负责异步测试运行。
+源码导航：`Channel/` 负责文件 exchange，`Dispatch/` 负责命令发现与调用，`Commands/` 负责 Unity 操作；AgentCallable 特性、目录和 Handler 位于 `Commands/Mutation/`。`Scene/` 负责可往返引用和序列化属性，`Testing/` 负责异步测试运行。
 
 ## 安装
 
@@ -134,12 +134,12 @@ public static class ProjectAgentMethods
 
 Agent 先调用 `list_agent_methods`，再把返回的 `DeclaringType.FullName::MethodName` ID 传给 `invoke_agent_method`。
 
-`timeoutSeconds` 只决定 Agent 等待 Exchange 的时长，不会取消 Unity 任务。等待超时后，Agent 必须继续监控同一个 Exchange，不能发布新请求。
+`timeoutSeconds` 只决定 Agent 等待 Exchange 的时长，不会取消 Unity 任务或它返回的 Awaitable。等待超时后，Agent 必须继续监控同一个 Exchange，不能发布新请求。
 
 可调用方法必须遵守以下规则：
 
 - 方法必须是无参、非泛型 `static`；允许 public 或 private。
-- 同步返回值会被忽略；`Task` 和 `Task<T>` 会被等待，其结果随后被忽略。
+- 同步返回值会被忽略；公开实例 `GetAwaiter()` 的返回类型会通过 `dynamic` 等待，其结果随后被忽略。无需增加特定包依赖即可支持 `Task`、`ValueTask`、`UniTask` 及其泛型形式。
 - `async void` 无法可靠观察完成状态和异常，因此不会注册。
 - 调用不会进入 Batch，也不提供自动 Undo、dirty、save 或资源路径处理。
 - 该特性仅用于 Editor。调用 Runtime 逻辑时，应在 Editor 程序集中添加一层静态包装。

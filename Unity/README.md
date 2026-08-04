@@ -55,8 +55,9 @@ public static class ProjectAgentMethods
 
 `list_agent_methods` 返回说明、自动 ID `DeclaringType.FullName::MethodName` 和 `timeoutSeconds`
 （默认 30，范围 1..3600），`invoke_agent_method` 按完整 ID 调用。Agent 应按该值等待响应；
-它不会取消 Unity 侧 Task。方法必须是无参、非泛型 `static`；同步返回值会被忽略，
-`Task` / `Task<T>` 会等待完成后忽略结果，`async void` 不注册。该调用不允许进入 batch，
+它不会取消 Unity 侧 Awaitable。方法必须是无参、非泛型 `static`；同步返回值会被忽略，
+公开实例 `GetAwaiter()` 的返回类型会通过 `dynamic` 等待完成后忽略结果，因此无需包依赖即可支持
+`Task`、`ValueTask`、`UniTask` 及其泛型形式。`async void` 不注册。该调用不允许进入 batch，
 方法自己负责 Undo、dirty/save 和资源路径安全。
 特性属于 Editor 程序集；调用 Runtime 逻辑时，在 Editor 程序集中添加一层静态包装。
 

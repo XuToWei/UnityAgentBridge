@@ -18,7 +18,7 @@ namespace AgentBridge
         public string Description { get; }
 
         /// <summary>
-        /// Agent 等待本次 Exchange 响应的建议秒数；不会取消 Unity 侧正在运行的 Task。
+        /// Agent 等待本次 Exchange 响应的建议秒数；不会取消 Unity 侧正在运行的 Awaitable。
         /// </summary>
         public int TimeoutSeconds { get; }
     }

@@ -9,7 +9,7 @@ namespace AgentBridge
         public const string CommandName = "invoke_agent_method";
 
         public string Command => CommandName;
-        public string Description => "调用一个 AgentCallable 无参静态方法;忽略返回值,Task 会等待完成";
+        public string Description => "调用一个 AgentCallable 无参静态方法;忽略返回值,Awaitable 会等待完成";
         public string Group => "Mutation";
         public bool CanDisable => true;
         public CommandBatchMode BatchMode => CommandBatchMode.NotAllowed;

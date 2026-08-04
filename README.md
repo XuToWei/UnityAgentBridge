@@ -76,7 +76,7 @@ The profiling workflow has four commands. `capture_profiler` records actual fram
 
 This list is a package overview. `list_commands` remains the canonical command interface: it returns the live enabled command set, descriptions, parameter schemas, batch policies, and `commandsVersion`; do not copy that metadata into an agent prompt or integration.
 
-Source map: `Channel/` owns the file exchange, `Dispatch/` owns command discovery and invocation, `Commands/` owns Unity operations, `Scene/` owns round-trippable references and serialized properties, and `Testing/` owns asynchronous test runs.
+Source map: `Channel/` owns the file exchange, `Dispatch/` owns command discovery and invocation, and `Commands/` owns Unity operations. The AgentCallable attribute, registry, and handlers live in `Commands/Mutation/`. `Scene/` owns round-trippable references and serialized properties, and `Testing/` owns asynchronous test runs.
 
 ## Install
 
@@ -135,12 +135,12 @@ The first constructor argument is the description shown to the Agent. The option
 
 The Agent calls `list_agent_methods`, then invokes the returned `DeclaringType.FullName::MethodName` ID through `invoke_agent_method`.
 
-`timeoutSeconds` only tells the Agent how long to wait for the Exchange. It never cancels Unity work. If waiting times out, the Agent must keep monitoring the same Exchange and must not publish another request.
+`timeoutSeconds` only tells the Agent how long to wait for the Exchange. It never cancels Unity work or its returned Awaitable. If waiting times out, the Agent must keep monitoring the same Exchange and must not publish another request.
 
 Callable methods follow these rules:
 
 - The method must be parameterless, non-generic, and `static`; either public or private is allowed.
-- Synchronous return values are ignored. `Task` and `Task<T>` are awaited, then their results are ignored.
+- Synchronous return values are ignored. Any return type exposing a public instance `GetAwaiter()` is awaited through `dynamic`, then its result is ignored. This includes `Task`, `ValueTask`, `UniTask`, and their generic forms without adding package-specific dependencies.
 - `async void` methods are rejected because completion and exceptions cannot be observed reliably.
 - Invocation is never part of a Batch and provides no automatic Undo, dirty, save, or asset-path handling.
 - The attribute is Editor-only. Expose runtime logic through a thin static wrapper in an Editor assembly.
