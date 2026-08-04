@@ -34,12 +34,25 @@
 
 后续请求必须先在缓存中查 command 和 schema。不要凭文档、源码文件名或记忆拼参数。
 
+### 2.1 发现 Agent-callable 方法
+
+`AgentCallableAttribute` 暴露的无参静态方法不属于 command set。调用前先执行
+`list_agent_methods`，从结果中选择目标，并原样复用：
+
+- `id`：传给 `invoke_agent_method.params.method` 的完整方法 ID；不要自行拼接。
+- `description`：方法用途说明。
+- `timeoutSeconds`：等待该方法 Exchange 的预算；缺省 30 秒，范围 1..3600 秒。
+
+`timeoutSeconds` 只控制 Agent 的等待预算，不会取消 Unity 方法或其 `Task`。如果预算耗尽但
+Exchange 尚未结束，报告方法仍在运行并继续轮询原 `response.json`。不得发布第二条请求，
+也不得修改 `processing.json`。
+
 ## 3. 完成一次 exchange
 
 1. 从缓存读取 command 的 `paramsSchema` 并构造 object 类型的 `params`。
 2. 生成全新 id。
 3. 确认不存在上一轮未确认的 `response.json`；写入 `request.json.tmp`，随后在 Bridge root 内原子 rename 为 `request.json`。
-4. 轮询固定的 `response.json`；约每秒一次，通常最多等待 30 秒。
+4. 约每秒轮询一次固定的 `response.json`。普通命令使用 30 秒等待预算；`invoke_agent_method` 使用目标方法的 `timeoutSeconds`。
 5. 文件出现后一次性完整读入内存，核对响应 id，处理 `status/result/error`，并比较 `commandsVersion`。
 6. 完整读取后等待 Unity 删除 `processing.json`；等待期间必须保留 `response.json`。
 7. `processing.json` 消失后，显式删除 `response.json` 作为 ack。删除成功后才可开始下一次 exchange。
@@ -74,6 +87,8 @@
 | `INVALID_PARAMS` | 按缓存 schema 修正 params，换新 id 重发 |
 | `UNKNOWN_COMMAND` | 刷新 command set，再换新 id 决定是否重发 |
 | `COMMAND_DISABLED` | 不要绕过禁用状态；让用户在命令管理器启用 |
+| `METHOD_NOT_FOUND` | 重新调用 `list_agent_methods`，使用返回的完整方法 ID |
+| `METHOD_EXECUTION_FAILED` | 方法或其 Task 执行失败；根据 message 定位实现，不要盲目重试 |
 | `HANDLER_EXCEPTION` | 根据 message 定位 implementation；不要盲目重试 |
 | `INTERRUPTED` | 副作用状态未知；先检查实际状态，再决定是否用新 id 重试 |
 | `RESPONSE_TOO_LARGE` | 缩小 root、depth、limit 等范围后换新 id |

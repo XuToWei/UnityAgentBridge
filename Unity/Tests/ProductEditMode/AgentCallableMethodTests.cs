@@ -44,6 +44,11 @@ namespace AgentBridge.Tests.ProductEditMode
                 item["id"].Value<string>() == AgentCallableSamples.SyncId);
             Assert.That(method["description"].Value<string>(),
                 Is.EqualTo(AgentCallableSamples.SyncDescription));
+            Assert.That(method["timeoutSeconds"].Value<int>(), Is.EqualTo(30));
+
+            var taskMethod = methods.OfType<JObject>().Single(item =>
+                item["id"].Value<string>() == AgentCallableSamples.TaskId);
+            Assert.That(taskMethod["timeoutSeconds"].Value<int>(), Is.EqualTo(120));
         }
 
         [Test]
@@ -128,6 +133,12 @@ namespace AgentBridge.Tests.ProductEditMode
                 "async void", new AgentCallableAttribute("async void"));
             AssertInvalid(nameof(InvalidAgentCallableSamples.ValidMethod),
                 "不能为空白", new AgentCallableAttribute(" "));
+            AssertInvalid(nameof(InvalidAgentCallableSamples.ValidMethod),
+                "1..3600", new AgentCallableAttribute("zero timeout", 0));
+            AssertInvalid(nameof(InvalidAgentCallableSamples.ValidMethod),
+                "1..3600", new AgentCallableAttribute(
+                    "large timeout",
+                    AgentCallableMethodRegistry.MaxTimeoutSeconds + 1));
         }
 
         [Test]
@@ -228,7 +239,7 @@ namespace AgentBridge.Tests.ProductEditMode
             PrivateCallCount++;
         }
 
-        [AgentCallable("waits for a Task<T> and ignores T")]
+        [AgentCallable("waits for a Task<T> and ignores T", 120)]
         public static Task<int> WaitForTask()
         {
             return s_TaskCompletion.Task;

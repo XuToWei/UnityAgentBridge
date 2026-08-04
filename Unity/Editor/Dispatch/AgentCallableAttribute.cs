@@ -9,11 +9,17 @@ namespace AgentBridge
     [AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = false)]
     public sealed class AgentCallableAttribute : Attribute
     {
-        public AgentCallableAttribute(string description)
+        public AgentCallableAttribute(string description, int timeoutSeconds = 30)
         {
             Description = description;
+            TimeoutSeconds = timeoutSeconds;
         }
 
         public string Description { get; }
+
+        /// <summary>
+        /// Agent 等待本次 Exchange 响应的建议秒数；不会取消 Unity 侧正在运行的 Task。
+        /// </summary>
+        public int TimeoutSeconds { get; }
     }
 }

@@ -109,32 +109,45 @@ Scene-object responses use canonical round-trippable paths. Each GameObject name
 
 `Window ▸ Agent Bridge` lists every command (built-in + extension) discovered via Unity `TypeCache`, grouped by **function** (`ICommandHandler.Group`), with click-to-sort headers, per-group filter, and bulk enable/disable. A top toolbar starts/stops the bridge host and toggles background (no-throttling) polling. While an Exchange is processing, the bridge cannot be stopped; the toggle becomes available again after the terminal response is published. Toggle any command on/off — a disabled command is **hidden from `list_commands`** and returns `COMMAND_DISABLED` on dispatch (the disable list is persisted in `EditorPrefs`, namespaced per project). Each handler declares this policy through `CanDisable`; protocol-required commands (`ping` and `list_commands`) return `false`.
 
-## Add your own command
+## Extend the bridge
 
-For a lightweight no-argument entry point, use `AgentCallable` as an explicit invocation grant:
+Choose the smallest extension surface that fits the operation: `AgentCallable` for a parameterless action, or `ICommandHandler` for a full command contract.
+
+### Expose a parameterless method
+
+Use `AgentCallable` for a project-specific Editor action that needs no arguments or structured result. Applying the attribute explicitly grants the Agent permission to invoke that method.
 
 ```csharp
 using AgentBridge;
+using System.Threading.Tasks;
 
 public static class ProjectAgentMethods
 {
-    [AgentCallable("rebuild navigation data for the current scene")]
-    private static void RebuildNavigation()
+    [AgentCallable("rebuild navigation data for the current scene", 300)]
+    private static Task RebuildNavigation()
     {
-        // Unity Editor work
+        return ProjectNavigation.RebuildAsync();
     }
 }
 ```
 
-`list_agent_methods` returns the description and generated
-`DeclaringType.FullName::MethodName` ID; `invoke_agent_method` invokes that exact ID. The method must
-be non-generic, parameterless, and `static`. Synchronous return values are ignored; `Task` and
-`Task<T>` are awaited and their results are ignored. `async void` methods are not registered. The
-method owns its Undo, dirty/save, and asset-path safety, and invocation is not allowed in a batch.
-The attribute is Editor-only; expose runtime logic through a thin static wrapper in an Editor assembly.
+The first constructor argument is the description shown to the Agent. The optional second argument is `timeoutSeconds`; it defaults to 30 and must be between 1 and 3600.
 
-Use a full `ICommandHandler` when the operation needs parameters, a structured result, or an explicit
-batch/Undo policy:
+The Agent calls `list_agent_methods`, then invokes the returned `DeclaringType.FullName::MethodName` ID through `invoke_agent_method`.
+
+`timeoutSeconds` only tells the Agent how long to wait for the Exchange. It never cancels Unity work. If waiting times out, the Agent must keep monitoring the same Exchange and must not publish another request.
+
+Callable methods follow these rules:
+
+- The method must be parameterless, non-generic, and `static`; either public or private is allowed.
+- Synchronous return values are ignored. `Task` and `Task<T>` are awaited, then their results are ignored.
+- `async void` methods are rejected because completion and exceptions cannot be observed reliably.
+- Invocation is never part of a Batch and provides no automatic Undo, dirty, save, or asset-path handling.
+- The attribute is Editor-only. Expose runtime logic through a thin static wrapper in an Editor assembly.
+
+### Implement a full command
+
+Use `ICommandHandler` when an operation needs parameters, a structured result, schema validation, command-level enable/disable behavior, or an explicit Batch/Undo policy.
 
 ```csharp
 using AgentBridge;
@@ -158,7 +171,7 @@ public sealed class SayHelloHandler : ICommandHandler
 
 `ICommandHandler` implementations are auto-registered via reflection / `TypeCache` — no manual wiring and no registration attribute. Members: `Command` (unique name), `Description`, `Group` (window grouping), `CanDisable`, `BatchMode`, `ExecuteAsync`, and `ParamsSchema`. `ExecuteAsync` returns `Task<object>` and may use normal `async`/`await`. Choose `NotAllowed`, `Allowed`, or `AllowedWithUndoCollapse` for `BatchMode`. Throw `CommandException(code, message)` to return a typed error.
 
-Extensions may use a lightweight parameterless `AgentCallable` method or a full `ICommandHandler`. The package does not maintain a local `extension.json` install/uninstall protocol; add or remove extension code through UPM or project assemblies.
+The package does not maintain an `extension.json` install/uninstall protocol. Add or remove extension code through UPM or project assemblies.
 
 ---
 

@@ -26,7 +26,7 @@ The currently registered and enabled commands plus their schemas and batch polic
 _Avoid_: command catalog, command list cache
 
 **Agent-callable method**:
-A parameterless static Editor method explicitly exposed with `AgentCallableAttribute`. Its external identity is `DeclaringType.FullName::MethodName`; `list_agent_methods` discovers it and `invoke_agent_method` invokes it. Synchronous return values are ignored, while `Task` and `Task<T>` are awaited and their results are ignored. This lightweight seam is not a Command and does not support Batch or automatic Undo.
+A parameterless static Editor method explicitly exposed with `AgentCallableAttribute`. Its external identity is `DeclaringType.FullName::MethodName`; `list_agent_methods` discovers its description and Agent wait-time hint, and `invoke_agent_method` invokes it. Synchronous return values are ignored, while `Task` and `Task<T>` are awaited and their results are ignored. The wait-time hint does not cancel Unity work. This lightweight seam is not a Command and does not support Batch or automatic Undo.
 _Avoid_: RPC endpoint, arbitrary reflection call, dynamic command
 
 **Profiler capture**:

@@ -10,7 +10,7 @@ namespace AgentBridge
         public const string CommandName = "list_agent_methods";
 
         public string Command => CommandName;
-        public string Description => "列出可供 Agent 调用的无参静态方法及函数说明";
+        public string Description => "列出可供 Agent 调用的无参静态方法、函数说明及等待超时";
         public string Group => "Meta";
         public bool CanDisable => false;
         public CommandBatchMode BatchMode => CommandBatchMode.Allowed;
@@ -22,7 +22,8 @@ namespace AgentBridge
                 methods = AgentCallableMethodRegistry.GetAll().Select(method => new
                 {
                     id = method.Id,
-                    description = method.Description
+                    description = method.Description,
+                    timeoutSeconds = method.TimeoutSeconds
                 }).ToArray()
             });
         }

@@ -14,6 +14,7 @@ namespace AgentBridge
     {
         internal const int MaxDescriptionLength = 1024;
         internal const int MaxMethodIdLength = 1024;
+        internal const int MaxTimeoutSeconds = 3600;
 
         private static Snapshot s_Snapshot;
 
@@ -147,6 +148,12 @@ namespace AgentBridge
                 error = $"函数说明最长 {MaxDescriptionLength} 个字符";
                 return false;
             }
+            if (attribute.TimeoutSeconds < 1 ||
+                attribute.TimeoutSeconds > MaxTimeoutSeconds)
+            {
+                error = $"TimeoutSeconds 必须在 1..{MaxTimeoutSeconds}";
+                return false;
+            }
 
             var id = CreateId(method);
             if (id.Length > MaxMethodIdLength)
@@ -155,7 +162,11 @@ namespace AgentBridge
                 return false;
             }
 
-            descriptor = new AgentCallableMethod(id, description, method);
+            descriptor = new AgentCallableMethod(
+                id,
+                description,
+                attribute.TimeoutSeconds,
+                method);
             error = null;
             return true;
         }
@@ -215,15 +226,21 @@ namespace AgentBridge
 
     internal sealed class AgentCallableMethod
     {
-        internal AgentCallableMethod(string id, string description, MethodInfo method)
+        internal AgentCallableMethod(
+            string id,
+            string description,
+            int timeoutSeconds,
+            MethodInfo method)
         {
             Id = id;
             Description = description;
+            TimeoutSeconds = timeoutSeconds;
             Method = method;
         }
 
         internal string Id { get; }
         internal string Description { get; }
+        internal int TimeoutSeconds { get; }
         internal MethodInfo Method { get; }
 
         internal async Task InvokeAsync()

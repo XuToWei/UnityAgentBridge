@@ -490,6 +490,7 @@ Invoke-TestCase "meta.list_agent_methods" {
     foreach ($method in @($exchange.Response.result.methods)) {
         Assert-True (-not [string]::IsNullOrWhiteSpace([string]$method.id)) "AgentCallable method id must be non-empty"
         Assert-True (-not [string]::IsNullOrWhiteSpace([string]$method.description)) "AgentCallable method description must be non-empty"
+        Assert-True ([int]$method.timeoutSeconds -ge 1 -and [int]$method.timeoutSeconds -le 3600) "AgentCallable timeoutSeconds must be in 1..3600"
     }
     return $exchange
 }

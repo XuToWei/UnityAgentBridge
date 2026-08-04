@@ -117,7 +117,7 @@ using AgentBridge;
 
 public static class ProjectAgentMethods
 {
-    [AgentCallable("重新生成当前场景的导航数据")]
+    [AgentCallable("重新生成当前场景的导航数据", 300)]
     private static void RebuildNavigation()
     {
         // Unity Editor 操作
@@ -126,7 +126,9 @@ public static class ProjectAgentMethods
 ```
 
 `list_agent_methods` 返回方法说明及自动生成的 ID
-`DeclaringType.FullName::MethodName`，`invoke_agent_method` 按完整 ID 调用。方法必须是
+`DeclaringType.FullName::MethodName`、`timeoutSeconds`（默认 30，范围 1..3600），
+`invoke_agent_method` 按完整 ID 调用。Agent 应使用该方法的超时值等待响应；它只是等待提示，
+不会取消 Unity 侧 Task。方法必须是
 无参、非泛型 `static`，同步返回值会被忽略；返回 `Task` / `Task<T>` 时等待完成并忽略结果。
 `async void` 不会注册。方法自身负责 Undo、dirty/save 和资源路径安全，调用命令不允许进入 batch。
 特性位于 Editor 程序集；调用运行时代码时，应在 Editor 程序集中添加一层静态包装。
