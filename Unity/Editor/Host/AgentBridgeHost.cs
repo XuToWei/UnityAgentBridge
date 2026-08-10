@@ -14,43 +14,30 @@ namespace AgentBridge
     [InitializeOnLoad]
     public static class AgentBridgeHost
     {
+        private const double RestoreIntervalSeconds = 1.0f;
         private static FileChannel s_Channel;
         private static double s_LastPollTime;
+        private static double s_NextRestoreTime;
         private static bool s_IsProcessing;
 
-        public static bool IsRunning =>
-            s_Channel != null && Directory.Exists(s_Channel.RootDir);
+        public static bool IsEnabled => BridgeHostState.HasExplicitState ? BridgeHostState.IsEnabled : Directory.Exists(BridgeSettings.RootDir);
+        public static bool IsRunning => s_Channel != null && Directory.Exists(s_Channel.RootDir);
 
         /// <summary>当前是否有已认领的 Exchange 尚未完成响应发布。</summary>
         public static bool IsProcessing => s_IsProcessing;
 
         static AgentBridgeHost()
         {
-            // 首次加载不创建目录；显式关闭后即使 Bridge root 保留也不恢复。
-            if (BridgeHostState.IsEnabled &&
-                FileChannel.TryOpenExisting(BridgeSettings.RootDir, out var channel))
-            {
-                // 为仅有旧版 Bridge root 的工程写入一次兼容迁移结果。
-                BridgeHostState.SetEnabled(true);
-                Activate(channel);
-            }
+            // 包更新期间目录和程序集可能尚未稳定，延迟到 Editor update 恢复。
+            ScheduleRestore();
         }
 
         public static void Start()
         {
-            if (IsRunning)
-            {
-                return;
-            }
-
-            // Start 只打开现有目录；目录创建由 AgentBridgeWindow 的启用按钮负责。
-            EditorApplication.update -= Tick;
-            s_Channel = null;
-            if (FileChannel.TryOpenExisting(BridgeSettings.RootDir, out var channel))
-            {
-                BridgeHostState.SetEnabled(true);
-                Activate(channel);
-            }
+            BridgeHostState.SetEnabled(true);
+            if (IsRunning) return;
+            ScheduleRestore();
+            RestoreIfEnabled();
         }
 
         public static void Stop()
@@ -62,15 +49,11 @@ namespace AgentBridge
                 return;
             }
 
-            EditorApplication.update -= Tick;
             BridgeHostState.SetEnabled(false);
-            if (s_Channel == null)
-            {
-                return;
-            }
-
-            s_Channel = null;
-            Debug.Log("[AgentBridge] stopped.");
+            CancelRestore();
+            var hadChannel = s_Channel != null;
+            Deactivate();
+            if (hadChannel) Debug.Log("[AgentBridge] stopped.");
         }
 
         private static void Tick()
@@ -94,7 +77,8 @@ namespace AgentBridge
 
             if (!IsRunning)
             {
-                Stop();
+                Deactivate();
+                ScheduleRestore();
                 return;
             }
 
@@ -119,9 +103,49 @@ namespace AgentBridge
             }
         }
 
+        private static void ScheduleRestore()
+        {
+            if (!IsEnabled)
+            {
+                CancelRestore();
+                return;
+            }
+            s_NextRestoreTime = 0;
+            EditorApplication.update -= RestoreIfEnabled;
+            EditorApplication.update += RestoreIfEnabled;
+        }
+
+        private static void CancelRestore()
+        {
+            EditorApplication.update -= RestoreIfEnabled;
+        }
+
+        private static void RestoreIfEnabled()
+        {
+            if (!IsEnabled || IsRunning)
+            {
+                CancelRestore();
+                return;
+            }
+            if (EditorApplication.isCompiling || EditorApplication.isUpdating) return;
+            var now = EditorApplication.timeSinceStartup;
+            if (now < s_NextRestoreTime) return;
+            s_NextRestoreTime = now + RestoreIntervalSeconds;
+            if (!FileChannel.TryOpenExisting(BridgeSettings.RootDir, out var channel)) return;
+            BridgeHostState.SetEnabled(true);
+            Activate(channel);
+        }
+
+        private static void Deactivate()
+        {
+            EditorApplication.update -= Tick;
+            s_Channel = null;
+        }
+
         private static void Activate(FileChannel channel)
         {
             s_Channel = channel ?? throw new ArgumentNullException(nameof(channel));
+            CancelRestore();
             EditorApplication.update -= Tick;
             EditorApplication.update += Tick;
             s_LastPollTime = 0;
