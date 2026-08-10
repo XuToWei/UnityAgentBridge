@@ -18,8 +18,8 @@ namespace AgentBridge
         private const string MarkdownBlockStart = "<!-- BEGIN UNITY_AGENT_BRIDGE -->";
         private const string MarkdownBlockEnd = "<!-- END UNITY_AGENT_BRIDGE -->";
         private const float ListLeadingSpaceWidth = 2f;
-        private const float CommandEnabledColumnWidth = 76f;
-        private const float CommandNameColumnWidth = 150f;
+        private const float CommandEnabledColumnWidth = 25f;
+        private const float CommandNameColumnWidth = 200f;
         private const float CommandGroupColumnWidth = 110f;
         private const float MarkdownStateColumnWidth = 72f;
         private const float MarkdownActionColumnWidth = 112f;
@@ -64,6 +64,7 @@ namespace AgentBridge
 
         private IReadOnlyList<RegisteredCommand> m_Commands = new RegisteredCommand[0];
         private IReadOnlyList<AgentCallableMethod> m_AgentMethods = new AgentCallableMethod[0];
+        private readonly Dictionary<System.Type, MonoScript> m_ScriptsByType = new Dictionary<System.Type, MonoScript>();
         private string m_NameFilter = "";
         private string m_AgentMethodFilter = "";
         private string m_SelectedGroup;   // null = 全部(单选)
@@ -85,9 +86,11 @@ namespace AgentBridge
 
         private GUIStyle m_SectionStyle;
         private GUIStyle m_SortHeaderStyle;
+        private GUIStyle m_CommandLinkStyle;
         private GUIStyle m_SuccessMiniLabelStyle;
         private GUIStyle m_AgentMethodLabelStyle;
         private GUIStyle m_AgentMethodValueStyle;
+        private GUIStyle m_AgentMethodIdLinkStyle;
         private GUIStyle m_AgentMethodDescriptionStyle;
 
         private enum CommandSortColumn
@@ -112,6 +115,7 @@ namespace AgentBridge
 
         private void Rescan(bool rebuildRegistry = false)
         {
+            m_ScriptsByType.Clear();
             if (rebuildRegistry)
             {
                 CommandRegistry.Rebuild();
@@ -125,21 +129,30 @@ namespace AgentBridge
 
         private void EnsureStyles()
         {
-            if (m_SectionStyle != null && m_SortHeaderStyle != null && m_SuccessMiniLabelStyle != null && m_AgentMethodLabelStyle != null && m_AgentMethodValueStyle != null && m_AgentMethodDescriptionStyle != null)
+            if (m_SectionStyle != null && m_SortHeaderStyle != null && m_CommandLinkStyle != null && m_SuccessMiniLabelStyle != null && m_AgentMethodLabelStyle != null && m_AgentMethodValueStyle != null && m_AgentMethodIdLinkStyle != null && m_AgentMethodDescriptionStyle != null)
             {
                 return;
             }
             m_SectionStyle = new GUIStyle(EditorStyles.miniBoldLabel);
             m_SortHeaderStyle = new GUIStyle(EditorStyles.label) { alignment = TextAnchor.MiddleLeft };
+            m_CommandLinkStyle = CreateLinkStyle(EditorStyles.label);
             m_SuccessMiniLabelStyle = new GUIStyle(EditorStyles.miniLabel);
             m_AgentMethodValueStyle = new GUIStyle(EditorStyles.miniLabel) { alignment = TextAnchor.MiddleLeft };
             m_AgentMethodLabelStyle = new GUIStyle(m_AgentMethodValueStyle) { fontStyle = FontStyle.Bold };
+            m_AgentMethodIdLinkStyle = CreateLinkStyle(m_AgentMethodValueStyle);
             m_AgentMethodDescriptionStyle = new GUIStyle(m_AgentMethodValueStyle) { wordWrap = true };
             var successTextColor = GetSuccessTextColor();
             m_SuccessMiniLabelStyle.normal.textColor = successTextColor;
             m_SuccessMiniLabelStyle.hover.textColor = successTextColor;
             m_SuccessMiniLabelStyle.active.textColor = successTextColor;
             m_SuccessMiniLabelStyle.focused.textColor = successTextColor;
+        }
+
+        private static GUIStyle CreateLinkStyle(GUIStyle source)
+        {
+            var style = new GUIStyle(source);
+            style.normal.textColor = style.hover.textColor = style.active.textColor = style.focused.textColor = EditorStyles.linkLabel.normal.textColor;
+            return style;
         }
 
         private static Color GetSuccessTextColor()
@@ -355,7 +368,19 @@ namespace AgentBridge
                 using (new EditorGUILayout.HorizontalScope())
                 {
                     GUILayout.Label("ID", m_AgentMethodLabelStyle, GUILayout.Width(AgentMethodLabelColumnWidth), GUILayout.Height(lineHeight));
-                    EditorGUILayout.LabelField(new GUIContent(method.Id, $"完整方法 ID: {method.Id}"), m_AgentMethodValueStyle, GUILayout.MinWidth(180), GUILayout.Height(lineHeight));
+                    var script = GetScript(method?.Method?.DeclaringType);
+                    if (script == null)
+                    {
+                        EditorGUILayout.LabelField(new GUIContent(method.Id, $"完整方法 ID: {method.Id}"), m_AgentMethodValueStyle, GUILayout.MinWidth(180), GUILayout.Height(lineHeight));
+                    }
+                    else
+                    {
+                        if (GUILayout.Button(new GUIContent(method.Id, $"点击定位代码文件\n完整方法 ID: {method.Id}"), m_AgentMethodIdLinkStyle, GUILayout.MinWidth(180), GUILayout.ExpandWidth(true), GUILayout.Height(lineHeight)))
+                        {
+                            PingScript(script);
+                        }
+                        EditorGUIUtility.AddCursorRect(GUILayoutUtility.GetLastRect(), MouseCursor.Link);
+                    }
                     EditorGUILayout.LabelField(new GUIContent($"超时 {method.TimeoutSeconds}s", "Agent 等待 Exchange 的建议时间"), m_AgentMethodValueStyle, GUILayout.Width(AgentMethodTimeoutColumnWidth), GUILayout.Height(lineHeight));
 
                     var isCurrent = string.Equals(method.Id, m_RunningAgentMethodId, System.StringComparison.Ordinal);
@@ -377,6 +402,27 @@ namespace AgentBridge
                     EditorGUILayout.LabelField(content, m_AgentMethodDescriptionStyle, GUILayout.Height(descriptionHeight));
                 }
             }
+        }
+
+        private MonoScript GetScript(System.Type type)
+        {
+            while (type?.DeclaringType != null) type = type.DeclaringType;
+            if (type == null) return null;
+            if (m_ScriptsByType.TryGetValue(type, out var script)) return script;
+            return m_ScriptsByType[type] = FindScript(type);
+        }
+
+        private static void PingScript(MonoScript script)
+        {
+            Selection.activeObject = script;
+            EditorGUIUtility.PingObject(script);
+        }
+
+        private static MonoScript FindScript(System.Type type)
+        {
+            if (type == null) return null;
+            var scripts = AssetDatabase.FindAssets($"{type.Name} t:MonoScript").Select(guid => AssetDatabase.LoadAssetAtPath<MonoScript>(AssetDatabase.GUIDToAssetPath(guid))).Where(script => script != null).ToList();
+            return scripts.FirstOrDefault(script => script.GetClass() == type) ?? scripts.FirstOrDefault(script => script.GetClass() == null && string.Equals(Path.GetFileNameWithoutExtension(AssetDatabase.GetAssetPath(script)), type.Name, System.StringComparison.Ordinal));
         }
 
         private bool IsAgentMethodInvocationRunning() => m_AgentMethodInvocationTask != null && !m_AgentMethodInvocationTask.IsCompleted;
@@ -705,7 +751,16 @@ namespace AgentBridge
             }
             GUILayout.Space(CommandEnabledColumnWidth - 16f); // 补足"启用"列宽,使命令名与表头"命令"列对齐
             var nameTip = locked ? $"{cmd.Description}(必须命令,不可禁用)" : cmd.Description;
-            EditorGUILayout.LabelField(new GUIContent(cmd.Command, nameTip), EditorStyles.label, GUILayout.Width(CommandNameColumnWidth));
+            var script = GetScript(cmd.Handler?.GetType());
+            if (script == null)
+            {
+                EditorGUILayout.LabelField(new GUIContent(cmd.Command, nameTip), EditorStyles.label, GUILayout.Width(CommandNameColumnWidth));
+            }
+            else
+            {
+                if (GUILayout.Button(new GUIContent(cmd.Command, $"点击定位代码文件\n{nameTip}"), m_CommandLinkStyle, GUILayout.Width(CommandNameColumnWidth))) PingScript(script);
+                EditorGUIUtility.AddCursorRect(GUILayoutUtility.GetLastRect(), MouseCursor.Link);
+            }
             EditorGUILayout.LabelField(CommandGroupName(cmd), EditorStyles.label, GUILayout.Width(CommandGroupColumnWidth));
             EditorGUILayout.LabelField(cmd.Description ?? "");
 
