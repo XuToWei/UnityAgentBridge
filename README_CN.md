@@ -116,6 +116,8 @@ Profiler 工作流分为四步：`capture_profiler` 自动录制实际帧并保�
 
 项目专用的 Editor 操作如果不需要参数或结构化结果，可以使用 `AgentCallable`。添加该特性即表示明确授权 Agent 调用这个方法。
 
+Agent 驱动的流程测试、场景级验证和 smoke test 是一个推荐场景。用户要求编写这类测试代码时，Agent 可以在目标工程现有的 Editor 程序集中创建一个自包含的 `AgentCallable` 方法，把 Arrange、Act 和 Assert 连成一个确定流程，等待 Unity 编译后再通过发现结果调用它。方法正常结束表示通过；检查失败必须抛出包含步骤、期望值和实际值的异常。测试应使用隔离的临时状态，并在 `finally` 中恢复和清理现场。需要参数矩阵、标准测试报告或长期 CI 回归时，仍应使用 Unity Test Framework；需要结构化输入或结果时则实现 `ICommandHandler`。
+
 ```csharp
 using AgentBridge;
 using System.Threading.Tasks;

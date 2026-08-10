@@ -40,6 +40,13 @@ Profiler 工作流包含 `capture_profiler`、`get_profiler_overview`、`get_pro
 
 只需暴露无参静态方法时，可使用轻量特性：
 
+流程测试、场景级验证和 smoke test 是推荐用法：在用户要求编写测试代码时，Agent 可在目标工程
+已有的 Editor 程序集中生成自包含的 `AgentCallable` 方法，把 Arrange、Act、Assert 连成一个
+确定流程，等待编译后通过 `list_agent_methods` 发现并调用。正常结束表示通过；检查失败应抛出
+包含步骤、期望值和实际值的异常。测试使用隔离的临时状态，并在 `finally` 中恢复和清理现场。
+参数矩阵、标准测试报告和长期 CI 回归仍使用 Unity Test Framework；结构化输入或结果使用完整
+handler。
+
 ```csharp
 using AgentBridge;
 

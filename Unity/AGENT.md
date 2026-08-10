@@ -47,6 +47,29 @@
 Exchange 尚未结束，报告方法仍在运行并继续轮询原 `response.json`。不得发布第二条请求，
 也不得修改 `processing.json`。
 
+### 2.2 为流程性验证编写 Agent-callable 方法
+
+当用户要求流程测试、场景级验证或 smoke test，而验证逻辑更适合在项目代码里连续执行多个
+步骤时，推荐使用 `AgentCallable`。如果没有现成方法，并且当前任务已经授权编写测试代码，
+Agent 应先理解目标工程的 API 与程序集边界，再在现有 Editor-only 程序集中编写一个专用、
+自包含的无参静态方法；不要把同一流程拆成大量依赖中间状态的 Exchange。
+
+流程测试代码必须遵守以下约定：
+
+- 用 `description` 明确写出测试场景和成功条件，并为完整流程设置合理的 `timeoutSeconds`。
+- 按 Arrange → Act → Assert 顺序执行；异步流程返回 `Task`、`UniTask` 等 Awaitable，禁止
+  `async void`。
+- `invoke_agent_method` 会忽略返回值，因此“正常结束”表示通过；任一检查点失败时抛出带有
+  步骤、期望值和实际值的异常，使 Exchange 返回 `METHOD_EXECUTION_FAILED`。
+- 在隔离的临时场景、对象或资产上运行，并用 `finally` 恢复编辑器状态和清理临时内容。
+  `AgentCallable` 不提供自动 Undo、dirty、save 或资源路径保护。
+- 写入或修改脚本后等待 Unity 编译和 domain reload 完成；修复所有编译错误，再重新执行
+  `list_agent_methods`，只使用它返回的完整 ID 调用测试。
+- 按用户要求决定保留为项目测试还是删除一次性探针；不得删除用户要求交付的测试代码。
+
+需要参数矩阵、多个独立用例、标准测试报告或长期 CI 回归时，使用 Unity Test Framework 和
+`run_tests`。需要结构化输入或结果时，实现 `ICommandHandler`。
+
 ## 3. 完成一次 exchange
 
 1. 从缓存读取 command 的 `paramsSchema` 并构造 object 类型的 `params`。

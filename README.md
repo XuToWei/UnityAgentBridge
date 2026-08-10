@@ -117,6 +117,8 @@ Choose the smallest extension surface that fits the operation: `AgentCallable` f
 
 Use `AgentCallable` for a project-specific Editor action that needs no arguments or structured result. Applying the attribute explicitly grants the Agent permission to invoke that method.
 
+Agent-driven workflow, scenario, and smoke checks are a recommended use case. When the user asks for such test code, the Agent can author a self-contained `AgentCallable` method in an existing Editor assembly, express Arrange, Act, and Assert as one deterministic flow, wait for Unity to compile it, and invoke the method returned by discovery. Normal completion means pass; a failed checkpoint must throw an exception that names the step, expected value, and actual value. The check should use isolated temporary state and restore or clean it in `finally`. Use Unity Test Framework instead for parameter matrices, standard test reports, or durable CI regression suites; use `ICommandHandler` when structured input or output is required.
+
 ```csharp
 using AgentBridge;
 using System.Threading.Tasks;
