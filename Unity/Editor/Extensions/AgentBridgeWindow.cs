@@ -302,7 +302,7 @@ namespace AgentBridge
                         : new GUIContent(".agentbridge 不存在", $"Agent Bridge 的 .agentbridge 文件通讯目录不存在\n完整路径: {BridgeSettings.RootDir}\n启用桥接后会自动创建该目录");
                     if (GUILayout.Button(directoryButtonContent, EditorStyles.toolbarButton, GUILayout.Width(124)))
                     {
-                        EditorUtility.RevealInFinder(BridgeSettings.RootDir);
+                        EditorUtility.OpenWithDefaultApp(BridgeSettings.RootDir);
                     }
                 }
 
