@@ -59,6 +59,8 @@ namespace AgentBridge
             EnsureNoActiveRun();
             var savedScenes = HandleUnsavedScenes(ifUnsaved);
             EnsureEditorCanStart();
+            TestRunStore.ClearAll();
+            s_LastRecord = null;
 
             var runId = $"test-run-{Guid.NewGuid():N}";
             var record = new TestRunRecord

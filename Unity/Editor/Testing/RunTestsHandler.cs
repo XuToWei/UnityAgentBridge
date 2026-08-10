@@ -11,8 +11,7 @@ namespace AgentBridge
     {
         public string Command => "run_tests";
 
-        public string Description =>
-            "异步运行 Unity Test Framework(mode=edit|play,可过滤);dirty 场景默认拒绝、ifUnsaved=save 可非交互保存;返回 runId";
+        public string Description => "异步运行 Unity Test Framework(mode=edit|play,可过滤);启动前清空 .agentbridge/test-results;dirty 场景默认拒绝、ifUnsaved=save 可非交互保存;返回 runId";
 
         public string Group => "Testing";
         public bool CanDisable => true;

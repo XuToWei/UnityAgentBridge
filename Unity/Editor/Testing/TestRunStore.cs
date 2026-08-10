@@ -15,6 +15,21 @@ namespace AgentBridge
 
         private static string ResultDirectory => Path.Combine(BridgeSettings.RootDir, "test-results");
 
+        public static void ClearAll()
+        {
+            try
+            {
+                if (Directory.Exists(ResultDirectory))
+                {
+                    Directory.Delete(ResultDirectory, true);
+                }
+            }
+            catch (Exception ex) when (IsIoException(ex))
+            {
+                throw new CommandException(TestErrorCodes.TestResultIoError, $"清理测试结果目录失败:{ex.Message}");
+            }
+        }
+
         public static void Save(TestRunRecord record)
         {
             if (record == null || !IsValidRunId(record.RunId))
