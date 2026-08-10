@@ -18,8 +18,7 @@ namespace AgentBridge.Tests.ProductEditMode
         [SetUp]
         public void SetUp()
         {
-            m_InvokeWasDisabled = CommandToggle.Disabled()
-                .Contains(InvokeAgentMethodHandler.CommandName);
+            m_InvokeWasDisabled = CommandToggle.Disabled().Contains(InvokeAgentMethodHandler.CommandName);
             CommandToggle.SetEnabled(InvokeAgentMethodHandler.CommandName, true);
             AgentCallableSamples.Reset();
             AgentCallableMethodRegistry.Rebuild();
@@ -29,9 +28,7 @@ namespace AgentBridge.Tests.ProductEditMode
         [TearDown]
         public void TearDown()
         {
-            CommandToggle.SetEnabled(
-                InvokeAgentMethodHandler.CommandName,
-                !m_InvokeWasDisabled);
+            CommandToggle.SetEnabled(InvokeAgentMethodHandler.CommandName, !m_InvokeWasDisabled);
         }
 
         [Test]
@@ -41,15 +38,55 @@ namespace AgentBridge.Tests.ProductEditMode
 
             Assert.That(response.Status, Is.EqualTo("ok"));
             var methods = (JArray)response.Result["methods"];
-            var method = methods.OfType<JObject>().Single(item =>
-                item["id"].Value<string>() == AgentCallableSamples.SyncId);
-            Assert.That(method["description"].Value<string>(),
-                Is.EqualTo(AgentCallableSamples.SyncDescription));
+            var method = methods.OfType<JObject>().Single(item => item["id"].Value<string>() == AgentCallableSamples.SyncId);
+            Assert.That(method["description"].Value<string>(), Is.EqualTo(AgentCallableSamples.SyncDescription));
             Assert.That(method["timeoutSeconds"].Value<int>(), Is.EqualTo(30));
 
-            var taskMethod = methods.OfType<JObject>().Single(item =>
-                item["id"].Value<string>() == AgentCallableSamples.TaskId);
+            var taskMethod = methods.OfType<JObject>().Single(item => item["id"].Value<string>() == AgentCallableSamples.TaskId);
             Assert.That(taskMethod["timeoutSeconds"].Value<int>(), Is.EqualTo(120));
+        }
+
+        [Test]
+        public void CommandWindowList_FiltersMethodsByIdAndDescription()
+        {
+            var methods = AgentCallableMethodRegistry.GetAll();
+
+            var byDescription = AgentBridgeWindow.FilterAgentMethods(methods, AgentCallableSamples.SyncDescription);
+            Assert.That(byDescription.Select(method => method.Id), Does.Contain(AgentCallableSamples.SyncId));
+
+            var byId = AgentBridgeWindow.FilterAgentMethods(methods, AgentCallableSamples.SyncId.ToUpperInvariant());
+            Assert.That(byId.Select(method => method.Id), Does.Contain(AgentCallableSamples.SyncId));
+        }
+
+        [Test]
+        public async Task CommandWindowInvocation_ExecutesMethodAndShowsDescription()
+        {
+            var method = AgentCallableMethodRegistry.GetAll().Single(item => item.Id == AgentCallableSamples.SyncId);
+
+            var result = await AgentBridgeWindow.InvokeAgentMethodForWindowAsync(method);
+            var status = AgentBridgeWindow.FormatAgentMethodInvocationStatus(result);
+
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(AgentCallableSamples.SyncCallCount, Is.EqualTo(1));
+            Assert.That(status, Does.Contain("执行成功"));
+            Assert.That(status, Does.Contain(AgentCallableSamples.SyncId));
+            Assert.That(status, Does.Contain(AgentCallableSamples.SyncDescription));
+        }
+
+        [Test]
+        public async Task CommandWindowInvocation_ShowsFailureCodeAndDescription()
+        {
+            LogAssert.Expect(LogType.Exception, new Regex("InvalidOperationException"));
+            var method = AgentCallableMethodRegistry.GetAll().Single(item => item.Id == AgentCallableSamples.SyncExceptionId);
+
+            var result = await AgentBridgeWindow.InvokeAgentMethodForWindowAsync(method);
+            var status = AgentBridgeWindow.FormatAgentMethodInvocationStatus(result);
+
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.ErrorCode, Is.EqualTo(AgentCallableErrorCodes.MethodExecutionFailed));
+            Assert.That(status, Does.Contain("执行失败"));
+            Assert.That(status, Does.Contain(method.Description));
+            Assert.That(status, Does.Contain(AgentCallableErrorCodes.MethodExecutionFailed));
         }
 
         [Test]
@@ -58,8 +95,7 @@ namespace AgentBridge.Tests.ProductEditMode
             var response = await Invoke(AgentCallableSamples.SyncId);
 
             Assert.That(response.Status, Is.EqualTo("ok"));
-            Assert.That(response.Result["method"].Value<string>(),
-                Is.EqualTo(AgentCallableSamples.SyncId));
+            Assert.That(response.Result["method"].Value<string>(), Is.EqualTo(AgentCallableSamples.SyncId));
             Assert.That(response.Result["invoked"].Value<bool>(), Is.True);
             Assert.That(response.Result["value"], Is.Null);
             Assert.That(AgentCallableSamples.SyncCallCount, Is.EqualTo(1));
@@ -110,8 +146,7 @@ namespace AgentBridge.Tests.ProductEditMode
             var response = await Invoke(methodId);
 
             Assert.That(response.Status, Is.EqualTo("error"));
-            Assert.That(response.Error.Code,
-                Is.EqualTo(AgentCallableErrorCodes.MethodExecutionFailed));
+            Assert.That(response.Error.Code, Is.EqualTo(AgentCallableErrorCodes.MethodExecutionFailed));
             Assert.That(response.Error.Message, Does.Contain(methodId));
         }
 
@@ -131,39 +166,27 @@ namespace AgentBridge.Tests.ProductEditMode
             var response = await Invoke("Missing.Type::MissingMethod");
 
             Assert.That(response.Status, Is.EqualTo("error"));
-            Assert.That(response.Error.Code,
-                Is.EqualTo(AgentCallableErrorCodes.MethodNotFound));
+            Assert.That(response.Error.Code, Is.EqualTo(AgentCallableErrorCodes.MethodNotFound));
         }
 
         [Test]
         public void RegistryValidation_RejectsUnsupportedShapesAndBlankDescription()
         {
-            AssertInvalid(nameof(InvalidAgentCallableSamples.InstanceMethod),
-                "static", new AgentCallableAttribute("instance"));
-            AssertInvalid(nameof(InvalidAgentCallableSamples.WithParameter),
-                "不能包含参数", new AgentCallableAttribute("parameter"));
-            AssertInvalid(nameof(InvalidAgentCallableSamples.GenericMethod),
-                "泛型", new AgentCallableAttribute("generic"));
-            AssertInvalid(nameof(InvalidAgentCallableSamples.AsyncVoidMethod),
-                "async void", new AgentCallableAttribute("async void"));
-            AssertInvalid(nameof(InvalidAgentCallableSamples.ValidMethod),
-                "不能为空白", new AgentCallableAttribute(" "));
-            AssertInvalid(nameof(InvalidAgentCallableSamples.ValidMethod),
-                "1..3600", new AgentCallableAttribute("zero timeout", 0));
-            AssertInvalid(nameof(InvalidAgentCallableSamples.ValidMethod),
-                "1..3600", new AgentCallableAttribute(
-                    "large timeout",
-                    AgentCallableMethodRegistry.MaxTimeoutSeconds + 1));
+            AssertInvalid(nameof(InvalidAgentCallableSamples.InstanceMethod), "static", new AgentCallableAttribute("instance"));
+            AssertInvalid(nameof(InvalidAgentCallableSamples.WithParameter), "不能包含参数", new AgentCallableAttribute("parameter"));
+            AssertInvalid(nameof(InvalidAgentCallableSamples.GenericMethod), "泛型", new AgentCallableAttribute("generic"));
+            AssertInvalid(nameof(InvalidAgentCallableSamples.AsyncVoidMethod), "async void", new AgentCallableAttribute("async void"));
+            AssertInvalid(nameof(InvalidAgentCallableSamples.ValidMethod), "不能为空白", new AgentCallableAttribute(" "));
+            AssertInvalid(nameof(InvalidAgentCallableSamples.ValidMethod), "1..3600", new AgentCallableAttribute("zero timeout", 0));
+            AssertInvalid(nameof(InvalidAgentCallableSamples.ValidMethod), "1..3600", new AgentCallableAttribute("large timeout", AgentCallableMethodRegistry.MaxTimeoutSeconds + 1));
         }
 
         [Test]
         public void CommandPolicies_KeepDiscoveryAvailableAndInvocationOutOfBatch()
         {
             var registrations = CommandRegistry.GetRegistrations();
-            var list = registrations.Single(item =>
-                item.Command == ListAgentMethodsHandler.CommandName);
-            var invoke = registrations.Single(item =>
-                item.Command == InvokeAgentMethodHandler.CommandName);
+            var list = registrations.Single(item => item.Command == ListAgentMethodsHandler.CommandName);
+            var invoke = registrations.Single(item => item.Command == InvokeAgentMethodHandler.CommandName);
 
             Assert.That(list.CanDisable, Is.False);
             Assert.That(list.BatchAllowed, Is.True);
@@ -199,17 +222,11 @@ namespace AgentBridge.Tests.ProductEditMode
             });
         }
 
-        private static void AssertInvalid(
-            string methodName,
-            string expectedError,
-            AgentCallableAttribute attribute)
+        private static void AssertInvalid(string methodName, string expectedError, AgentCallableAttribute attribute)
         {
-            var method = typeof(InvalidAgentCallableSamples).GetMethod(
-                methodName,
-                BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static);
+            var method = typeof(InvalidAgentCallableSamples).GetMethod(methodName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static);
 
-            Assert.That(AgentCallableMethodRegistry.TryCreate(
-                method, attribute, out _, out var error), Is.False);
+            Assert.That(AgentCallableMethodRegistry.TryCreate(method, attribute, out _, out var error), Is.False);
             Assert.That(error, Does.Contain(expectedError));
         }
     }
@@ -223,8 +240,7 @@ namespace AgentBridge.Tests.ProductEditMode
         public static readonly string PrivateId = Id(nameof(PrivateMethod));
         public static readonly string SyncExceptionId = Id(nameof(ThrowSynchronously));
         public static readonly string TaskExceptionId = Id(nameof(ThrowFromTask));
-        public static readonly string CustomAwaitableExceptionId =
-            Id(nameof(ThrowFromCustomAwaitable));
+        public static readonly string CustomAwaitableExceptionId = Id(nameof(ThrowFromCustomAwaitable));
         public static readonly string NullTaskId = Id(nameof(ReturnNullTask));
         public static readonly string CommandExceptionId = Id(nameof(ThrowCommandException));
 
@@ -292,8 +308,7 @@ namespace AgentBridge.Tests.ProductEditMode
         [AgentCallable("returns a faulted custom awaitable")]
         public static AgentCallableTestAwaitable ThrowFromCustomAwaitable()
         {
-            return new AgentCallableTestAwaitable(
-                Task.FromException<int>(new InvalidOperationException("custom awaitable failure")));
+            return new AgentCallableTestAwaitable(Task.FromException<int>(new InvalidOperationException("custom awaitable failure")));
         }
 
         [AgentCallable("incorrectly returns a null Task")]

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using UnityEditor;
 using UnityEngine;
 using RegisteredCommand = AgentBridge.CommandRegistry.RegisteredCommand;
@@ -22,10 +23,14 @@ namespace AgentBridge
         private const float CommandGroupColumnWidth = 110f;
         private const float MarkdownStateColumnWidth = 72f;
         private const float MarkdownActionColumnWidth = 112f;
+        private const float AgentMethodActionColumnWidth = 76f;
+        private const float AgentMethodTimeoutColumnWidth = 96f;
+        private const float AgentMethodLabelColumnWidth = 34f;
+        private const float AgentMethodDescriptionWidthReserve = 64f;
         private static readonly string[] s_MarkdownTargetFileNames = { "CLAUDE.md", "AGENTS.md" };
 
         private static readonly Color s_ZebraColor = new Color(0f, 0f, 0f, 0.06f);
-        private static readonly string[] s_TabNames = { "AI 指令", "命令" };
+        private static readonly string[] s_TabNames = { "AI 指令", "命令", "AgentCallable" };
 
         private sealed class MarkdownTargetOption
         {
@@ -39,23 +44,51 @@ namespace AgentBridge
             public string Label { get; }
         }
 
-        private IReadOnlyList<RegisteredCommand> m_Commands =
-            new RegisteredCommand[0];
+        internal sealed class AgentMethodInvocationResult
+        {
+            internal AgentMethodInvocationResult(bool succeeded, string methodId, string description, string errorCode, string errorMessage)
+            {
+                Succeeded = succeeded;
+                MethodId = methodId;
+                Description = description;
+                ErrorCode = errorCode;
+                ErrorMessage = errorMessage;
+            }
+
+            internal bool Succeeded { get; }
+            internal string MethodId { get; }
+            internal string Description { get; }
+            internal string ErrorCode { get; }
+            internal string ErrorMessage { get; }
+        }
+
+        private IReadOnlyList<RegisteredCommand> m_Commands = new RegisteredCommand[0];
+        private IReadOnlyList<AgentCallableMethod> m_AgentMethods = new AgentCallableMethod[0];
         private string m_NameFilter = "";
+        private string m_AgentMethodFilter = "";
         private string m_SelectedGroup;   // null = 全部(单选)
         private CommandSortColumn m_CommandSortColumn = CommandSortColumn.Name;
         private bool m_EnabledSortAscending = true;
         private bool m_NameSortAscending = true;
         private bool m_GroupSortAscending = true;
         private bool m_CommandsLoaded;
+        private bool m_AgentMethodsLoaded;
         private int m_SelectedTab;
         private Vector2 m_Scroll;
+        private Vector2 m_AgentMethodScroll;
         private string m_MarkdownStatus = "";
         private MessageType m_MarkdownStatusType = MessageType.Info;
+        private string m_RunningAgentMethodId;
+        private Task m_AgentMethodInvocationTask;
+        private string m_AgentMethodStatus = "";
+        private MessageType m_AgentMethodStatusType = MessageType.Info;
 
         private GUIStyle m_SectionStyle;
         private GUIStyle m_SortHeaderStyle;
         private GUIStyle m_SuccessMiniLabelStyle;
+        private GUIStyle m_AgentMethodLabelStyle;
+        private GUIStyle m_AgentMethodValueStyle;
+        private GUIStyle m_AgentMethodDescriptionStyle;
 
         private enum CommandSortColumn
         {
@@ -74,6 +107,7 @@ namespace AgentBridge
         {
             minSize = new Vector2(660f, 380f); // 保证工具条、分组与表头都有足够空间
             m_CommandsLoaded = false;
+            m_AgentMethodsLoaded = false;
         }
 
         private void Rescan(bool rebuildRegistry = false)
@@ -81,26 +115,26 @@ namespace AgentBridge
             if (rebuildRegistry)
             {
                 CommandRegistry.Rebuild();
+                AgentCallableMethodRegistry.Rebuild();
             }
             m_Commands = CommandRegistry.GetRegistrations();
+            m_AgentMethods = AgentCallableMethodRegistry.GetAll();
             m_CommandsLoaded = true;
+            m_AgentMethodsLoaded = true;
         }
 
         private void EnsureStyles()
         {
-            if (m_SectionStyle != null)
+            if (m_SectionStyle != null && m_SortHeaderStyle != null && m_SuccessMiniLabelStyle != null && m_AgentMethodLabelStyle != null && m_AgentMethodValueStyle != null && m_AgentMethodDescriptionStyle != null)
             {
-                if (m_SortHeaderStyle != null && m_SuccessMiniLabelStyle != null)
-                {
-                    return;
-                }
+                return;
             }
             m_SectionStyle = new GUIStyle(EditorStyles.miniBoldLabel);
-            m_SortHeaderStyle = new GUIStyle(EditorStyles.label)
-            {
-                alignment = TextAnchor.MiddleLeft
-            };
+            m_SortHeaderStyle = new GUIStyle(EditorStyles.label) { alignment = TextAnchor.MiddleLeft };
             m_SuccessMiniLabelStyle = new GUIStyle(EditorStyles.miniLabel);
+            m_AgentMethodValueStyle = new GUIStyle(EditorStyles.miniLabel) { alignment = TextAnchor.MiddleLeft };
+            m_AgentMethodLabelStyle = new GUIStyle(m_AgentMethodValueStyle) { fontStyle = FontStyle.Bold };
+            m_AgentMethodDescriptionStyle = new GUIStyle(m_AgentMethodValueStyle) { wordWrap = true };
             var successTextColor = GetSuccessTextColor();
             m_SuccessMiniLabelStyle.normal.textColor = successTextColor;
             m_SuccessMiniLabelStyle.hover.textColor = successTextColor;
@@ -148,12 +182,25 @@ namespace AgentBridge
                     DrawSectionTitle("命令");
                     DrawCommandSection();
                     break;
+                case 2:
+                    EnsureAgentMethodsLoaded();
+                    DrawSectionTitle("AgentCallable 方法");
+                    DrawAgentCallableSection();
+                    break;
             }
         }
 
         private void EnsureCommandsLoaded()
         {
             if (!m_CommandsLoaded)
+            {
+                Rescan();
+            }
+        }
+
+        private void EnsureAgentMethodsLoaded()
+        {
+            if (!m_AgentMethodsLoaded)
             {
                 Rescan();
             }
@@ -184,14 +231,8 @@ namespace AgentBridge
                 bool newRunning;
                 using (new EditorGUI.DisabledScope(processing))
                 {
-                    var bridgeTooltip = processing
-                        ? "命令执行中，完成响应发布后才能停止桥接"
-                        : "启动或停止文件轮询主机";
-                    newRunning = GUILayout.Toggle(
-                        running,
-                        new GUIContent("启用桥接", bridgeTooltip),
-                        EditorStyles.toolbarButton,
-                        GUILayout.Width(86));
+                    var bridgeTooltip = processing ? "命令执行中，完成响应发布后才能停止桥接" : "启动或停止文件轮询主机";
+                    newRunning = GUILayout.Toggle(running, new GUIContent("启用桥接", bridgeTooltip), EditorStyles.toolbarButton, GUILayout.Width(86));
                 }
                 GUI.backgroundColor = oldBackgroundColor;
                 GUI.contentColor = oldContentColor;
@@ -219,8 +260,7 @@ namespace AgentBridge
                     GUI.backgroundColor = GetSuccessBackgroundColor();
                     GUI.contentColor = Color.white;
                 }
-                var newBackground = GUILayout.Toggle(background, new GUIContent("后台运行", "失焦时继续轮询"),
-                    EditorStyles.toolbarButton, GUILayout.Width(86));
+                var newBackground = GUILayout.Toggle(background, new GUIContent("后台运行", "失焦时继续轮询"), EditorStyles.toolbarButton, GUILayout.Width(86));
                 GUI.backgroundColor = oldBackgroundColor;
                 GUI.contentColor = oldContentColor;
                 if (newBackground != background)
@@ -241,10 +281,7 @@ namespace AgentBridge
                 }
 
                 GUILayout.FlexibleSpace();
-                EditorGUILayout.LabelField(new GUIContent(
-                        AgentBridgeHost.IsRunning ? "运行中" : "已停止",
-                        $"根目录: {BridgeSettings.RootDir}\n轮询: {BridgeSettings.PollIntervalMs} ms"),
-                    AgentBridgeHost.IsRunning ? m_SuccessMiniLabelStyle : EditorStyles.miniLabel, GUILayout.Width(72));
+                EditorGUILayout.LabelField(new GUIContent(AgentBridgeHost.IsRunning ? "运行中" : "已停止", $"根目录: {BridgeSettings.RootDir}\n轮询: {BridgeSettings.PollIntervalMs} ms"), AgentBridgeHost.IsRunning ? m_SuccessMiniLabelStyle : EditorStyles.miniLabel, GUILayout.Width(72));
             }
         }
 
@@ -258,8 +295,7 @@ namespace AgentBridge
             if (shown.Count == 0)
             {
                 EditorGUILayout.Space(8);
-                EditorGUILayout.LabelField(m_Commands.Count == 0 ? "(无命令)" : "(无匹配命令)",
-                    EditorStyles.centeredGreyMiniLabel);
+                EditorGUILayout.LabelField(m_Commands.Count == 0 ? "(无命令)" : "(无匹配命令)", EditorStyles.centeredGreyMiniLabel);
                 return;
             }
 
@@ -272,9 +308,165 @@ namespace AgentBridge
             EditorGUILayout.EndScrollView();
         }
 
-        private void DrawCommandToolbar(
-            List<CommandGroup> groups,
-            List<RegisteredCommand> visibleCommands)
+        private void DrawAgentCallableSection()
+        {
+            var shown = DrawAgentMethodToolbar();
+
+            if (!string.IsNullOrEmpty(m_AgentMethodStatus))
+            {
+                EditorGUILayout.HelpBox(m_AgentMethodStatus, m_AgentMethodStatusType);
+            }
+
+            if (shown.Count == 0)
+            {
+                EditorGUILayout.Space(8);
+                EditorGUILayout.LabelField(m_AgentMethods.Count == 0 ? "(无 AgentCallable 方法)" : "(无匹配方法)", EditorStyles.centeredGreyMiniLabel);
+                return;
+            }
+
+            m_AgentMethodScroll = EditorGUILayout.BeginScrollView(m_AgentMethodScroll);
+            for (var index = 0; index < shown.Count; index++)
+            {
+                DrawAgentMethodCard(shown[index]);
+            }
+            EditorGUILayout.EndScrollView();
+        }
+
+        private List<AgentCallableMethod> DrawAgentMethodToolbar()
+        {
+            List<AgentCallableMethod> shown;
+            using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))
+            {
+                GUILayout.Label("搜索", GUILayout.Width(32));
+                m_AgentMethodFilter = EditorGUILayout.TextField(m_AgentMethodFilter, EditorStyles.toolbarSearchField, GUILayout.MinWidth(180));
+
+                shown = FilterAgentMethods(m_AgentMethods, m_AgentMethodFilter);
+                GUILayout.FlexibleSpace();
+                EditorGUILayout.LabelField($"显示 {shown.Count} / {m_AgentMethods.Count}", EditorStyles.miniLabel, GUILayout.Width(96));
+            }
+            return shown;
+        }
+
+        private void DrawAgentMethodCard(AgentCallableMethod method)
+        {
+            using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
+            {
+                var lineHeight = Mathf.Ceil(Mathf.Max(EditorGUIUtility.singleLineHeight, m_AgentMethodLabelStyle.CalcHeight(new GUIContent("ID"), AgentMethodLabelColumnWidth)));
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    GUILayout.Label("ID", m_AgentMethodLabelStyle, GUILayout.Width(AgentMethodLabelColumnWidth), GUILayout.Height(lineHeight));
+                    EditorGUILayout.LabelField(new GUIContent(method.Id, $"完整方法 ID: {method.Id}"), m_AgentMethodValueStyle, GUILayout.MinWidth(180), GUILayout.Height(lineHeight));
+                    EditorGUILayout.LabelField(new GUIContent($"超时 {method.TimeoutSeconds}s", "Agent 等待 Exchange 的建议时间"), m_AgentMethodValueStyle, GUILayout.Width(AgentMethodTimeoutColumnWidth), GUILayout.Height(lineHeight));
+
+                    var isCurrent = string.Equals(method.Id, m_RunningAgentMethodId, System.StringComparison.Ordinal);
+                    using (new EditorGUI.DisabledScope(IsAgentMethodInvocationRunning()))
+                    {
+                        if (GUILayout.Button(new GUIContent(isCurrent ? "执行中…" : "执行", method.Description), GUILayout.Width(AgentMethodActionColumnWidth), GUILayout.Height(lineHeight)))
+                        {
+                            BeginAgentMethodInvocation(method);
+                        }
+                    }
+                }
+
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    var content = new GUIContent(method.Description, method.Description);
+                    var contentWidth = Mathf.Max(1f, EditorGUIUtility.currentViewWidth - AgentMethodLabelColumnWidth - AgentMethodDescriptionWidthReserve);
+                    var descriptionHeight = Mathf.Ceil(Mathf.Max(lineHeight, m_AgentMethodDescriptionStyle.CalcHeight(content, contentWidth)));
+                    GUILayout.Label("描述", m_AgentMethodLabelStyle, GUILayout.Width(AgentMethodLabelColumnWidth), GUILayout.Height(descriptionHeight));
+                    EditorGUILayout.LabelField(content, m_AgentMethodDescriptionStyle, GUILayout.Height(descriptionHeight));
+                }
+            }
+        }
+
+        private bool IsAgentMethodInvocationRunning() => m_AgentMethodInvocationTask != null && !m_AgentMethodInvocationTask.IsCompleted;
+
+        private void BeginAgentMethodInvocation(AgentCallableMethod method)
+        {
+            if (method == null || IsAgentMethodInvocationRunning())
+            {
+                return;
+            }
+
+            m_RunningAgentMethodId = method.Id;
+            m_AgentMethodStatus = $"正在执行\n方法: {method.Id}\n描述: {method.Description}";
+            m_AgentMethodStatusType = MessageType.Info;
+            Repaint();
+            m_AgentMethodInvocationTask = InvokeAgentMethodAndUpdateStatusAsync(method);
+        }
+
+        private async Task InvokeAgentMethodAndUpdateStatusAsync(AgentCallableMethod method)
+        {
+            try
+            {
+                var result = await InvokeAgentMethodForWindowAsync(method);
+                m_AgentMethodStatus = FormatAgentMethodInvocationStatus(result);
+                m_AgentMethodStatusType = result.Succeeded ? MessageType.Info : MessageType.Error;
+            }
+            finally
+            {
+                m_RunningAgentMethodId = null;
+                if (this != null)
+                {
+                    Repaint();
+                }
+            }
+        }
+
+        internal static List<AgentCallableMethod> FilterAgentMethods(IEnumerable<AgentCallableMethod> methods, string filter)
+        {
+            var query = methods ?? Enumerable.Empty<AgentCallableMethod>();
+            if (!string.IsNullOrWhiteSpace(filter))
+            {
+                var value = filter.Trim();
+                query = query.Where(method => ContainsIgnoreCase(method.Id, value) || ContainsIgnoreCase(method.Description, value));
+            }
+
+            return query.OrderBy(method => method.Id, System.StringComparer.Ordinal).ToList();
+        }
+
+        private static bool ContainsIgnoreCase(string text, string value) => (text ?? "").IndexOf(value, System.StringComparison.OrdinalIgnoreCase) >= 0;
+
+        internal static async Task<AgentMethodInvocationResult> InvokeAgentMethodForWindowAsync(AgentCallableMethod method)
+        {
+            if (method == null)
+            {
+                return new AgentMethodInvocationResult(false, "", "", AgentCallableErrorCodes.MethodNotFound, "AgentCallable 方法不存在");
+            }
+
+            try
+            {
+                await method.InvokeAsync();
+                return new AgentMethodInvocationResult(true, method.Id, method.Description, null, null);
+            }
+            catch (CommandException ex)
+            {
+                return new AgentMethodInvocationResult(false, method.Id, method.Description, ex.Code, ex.Message);
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogException(ex);
+                return new AgentMethodInvocationResult(false, method.Id, method.Description, AgentCallableErrorCodes.MethodExecutionFailed, $"{ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        internal static string FormatAgentMethodInvocationStatus(AgentMethodInvocationResult result)
+        {
+            if (result == null)
+            {
+                return "执行失败\nMETHOD_EXECUTION_FAILED: 未返回执行结果";
+            }
+
+            var status = result.Succeeded ? "执行成功" : "执行失败";
+            var text = $"{status}\n方法: {result.MethodId}\n描述: {result.Description}";
+            if (!result.Succeeded)
+            {
+                text += $"\n{result.ErrorCode}: {result.ErrorMessage}";
+            }
+            return text;
+        }
+
+        private void DrawCommandToolbar(List<CommandGroup> groups, List<RegisteredCommand> visibleCommands)
         {
             using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))
             {
@@ -307,8 +499,7 @@ namespace AgentBridge
                 GUILayout.FlexibleSpace();
                 var visibleCount = visibleCommands.Count;
                 var enabledCount = visibleCommands.Count(IsCommandEnabled);
-                EditorGUILayout.LabelField($"显示 {visibleCount} · 启用 {enabledCount}", EditorStyles.miniLabel,
-                    GUILayout.Width(130));
+                EditorGUILayout.LabelField($"显示 {visibleCount} · 启用 {enabledCount}", EditorStyles.miniLabel, GUILayout.Width(130));
             }
         }
 
@@ -360,9 +551,7 @@ namespace AgentBridge
                 if (!anyUpToDate)
                 {
                     EditorGUILayout.Space(2);
-                    EditorGUILayout.HelpBox(
-                        "尚未把 AgentBridge 指令写入任何 CLAUDE.md / AGENTS.md。AI(如 Claude Code)可能不知道本工程接入了 Agent Bridge、也不会通过它驱动 Unity。请点上方「写入/更新片段」写入指令。",
-                        MessageType.Warning);
+                    EditorGUILayout.HelpBox("尚未把 AgentBridge 指令写入任何 CLAUDE.md / AGENTS.md。AI(如 Claude Code)可能不知道本工程接入了 Agent Bridge、也不会通过它驱动 Unity。请点上方「写入/更新片段」写入指令。", MessageType.Warning);
                 }
             }
 
@@ -381,8 +570,7 @@ namespace AgentBridge
             {
                 GUILayout.Space(ListLeadingSpaceWidth);
                 EditorGUILayout.LabelField(option.Label, GUILayout.MinWidth(180));
-                EditorGUILayout.LabelField(state, upToDate ? m_SuccessMiniLabelStyle : EditorStyles.miniLabel,
-                    GUILayout.Width(MarkdownStateColumnWidth));
+                EditorGUILayout.LabelField(state, upToDate ? m_SuccessMiniLabelStyle : EditorStyles.miniLabel, GUILayout.Width(MarkdownStateColumnWidth));
                 if (GUILayout.Button("写入/更新片段", GUILayout.Width(MarkdownActionColumnWidth)))
                 {
                     WriteClaudeTemplate(option.RelativePath);
@@ -394,10 +582,7 @@ namespace AgentBridge
         // 当前显示(经搜索 + 分组筛选)的命令,不含排序。供列表渲染与批量启停。
         private List<RegisteredCommand> VisibleCommands(List<CommandGroup> groups)
         {
-            return (string.IsNullOrEmpty(m_SelectedGroup)
-                    ? groups
-                    : groups.Where(g => g.Key == m_SelectedGroup))
-                .SelectMany(g => g.Commands).ToList();
+            return (string.IsNullOrEmpty(m_SelectedGroup) ? groups : groups.Where(g => g.Key == m_SelectedGroup)).SelectMany(g => g.Commands).ToList();
         }
 
         // 批量启停当前显示的命令(不可禁用的命令由 CommandToggle 自动跳过)。
@@ -413,8 +598,7 @@ namespace AgentBridge
             if (!string.IsNullOrEmpty(m_NameFilter))
             {
                 var f = m_NameFilter.ToLowerInvariant();
-                q = q.Where(c => (c.Command ?? "").ToLowerInvariant().Contains(f)
-                               || (c.Description ?? "").ToLowerInvariant().Contains(f));
+                q = q.Where(c => (c.Command ?? "").ToLowerInvariant().Contains(f) || (c.Description ?? "").ToLowerInvariant().Contains(f));
             }
             return q.ToList();
         }
@@ -426,23 +610,16 @@ namespace AgentBridge
         }
 
         // 排序:一次只按一个表头列排序,方向统一为升序/降序。
-        private IEnumerable<RegisteredCommand> SortCommands(
-            IEnumerable<RegisteredCommand> cmds)
+        private IEnumerable<RegisteredCommand> SortCommands(IEnumerable<RegisteredCommand> cmds)
         {
             switch (m_CommandSortColumn)
             {
                 case CommandSortColumn.Enabled:
-                    return m_EnabledSortAscending
-                        ? cmds.OrderBy(IsCommandEnabled).ThenBy(c => c.Command)
-                        : cmds.OrderByDescending(IsCommandEnabled).ThenBy(c => c.Command);
+                    return m_EnabledSortAscending ? cmds.OrderBy(IsCommandEnabled).ThenBy(c => c.Command) : cmds.OrderByDescending(IsCommandEnabled).ThenBy(c => c.Command);
                 case CommandSortColumn.Name:
-                    return m_NameSortAscending
-                        ? cmds.OrderBy(c => c.Command)
-                        : cmds.OrderByDescending(c => c.Command);
+                    return m_NameSortAscending ? cmds.OrderBy(c => c.Command) : cmds.OrderByDescending(c => c.Command);
                 case CommandSortColumn.Group:
-                    return m_GroupSortAscending
-                        ? cmds.OrderBy(CommandGroupName).ThenBy(c => c.Command)
-                        : cmds.OrderByDescending(CommandGroupName).ThenBy(c => c.Command);
+                    return m_GroupSortAscending ? cmds.OrderBy(CommandGroupName).ThenBy(c => c.Command) : cmds.OrderByDescending(CommandGroupName).ThenBy(c => c.Command);
                 default:
                     return cmds.OrderBy(c => c.Command);
             }
@@ -467,21 +644,15 @@ namespace AgentBridge
             using (new EditorGUILayout.HorizontalScope())
             {
                 GUILayout.Space(ListLeadingSpaceWidth);
-                if (GUILayout.Button(SortHeaderContent("启用", m_CommandSortColumn == CommandSortColumn.Enabled,
-                        m_EnabledSortAscending, "点击按启用状态升序/降序排序"),
-                    m_SortHeaderStyle, GUILayout.Width(CommandEnabledColumnWidth)))
+                if (GUILayout.Button(SortHeaderContent("启用", m_CommandSortColumn == CommandSortColumn.Enabled, m_EnabledSortAscending, "点击按启用状态升序/降序排序"), m_SortHeaderStyle, GUILayout.Width(CommandEnabledColumnWidth)))
                 {
                     ToggleCommandSort(CommandSortColumn.Enabled);
                 }
-                if (GUILayout.Button(SortHeaderContent("命令", m_CommandSortColumn == CommandSortColumn.Name,
-                        m_NameSortAscending, "点击按命令名升序/降序排序"),
-                    m_SortHeaderStyle, GUILayout.Width(CommandNameColumnWidth)))
+                if (GUILayout.Button(SortHeaderContent("命令", m_CommandSortColumn == CommandSortColumn.Name, m_NameSortAscending, "点击按命令名升序/降序排序"), m_SortHeaderStyle, GUILayout.Width(CommandNameColumnWidth)))
                 {
                     ToggleCommandSort(CommandSortColumn.Name);
                 }
-                if (GUILayout.Button(SortHeaderContent("分组", m_CommandSortColumn == CommandSortColumn.Group,
-                        m_GroupSortAscending, "点击按分组升序/降序排序"),
-                    m_SortHeaderStyle, GUILayout.Width(CommandGroupColumnWidth)))
+                if (GUILayout.Button(SortHeaderContent("分组", m_CommandSortColumn == CommandSortColumn.Group, m_GroupSortAscending, "点击按分组升序/降序排序"), m_SortHeaderStyle, GUILayout.Width(CommandGroupColumnWidth)))
                 {
                     ToggleCommandSort(CommandSortColumn.Group);
                 }
@@ -534,10 +705,8 @@ namespace AgentBridge
             }
             GUILayout.Space(CommandEnabledColumnWidth - 16f); // 补足"启用"列宽,使命令名与表头"命令"列对齐
             var nameTip = locked ? $"{cmd.Description}(必须命令,不可禁用)" : cmd.Description;
-            EditorGUILayout.LabelField(new GUIContent(cmd.Command, nameTip), EditorStyles.label,
-                GUILayout.Width(CommandNameColumnWidth));
-            EditorGUILayout.LabelField(CommandGroupName(cmd), EditorStyles.label,
-                GUILayout.Width(CommandGroupColumnWidth));
+            EditorGUILayout.LabelField(new GUIContent(cmd.Command, nameTip), EditorStyles.label, GUILayout.Width(CommandNameColumnWidth));
+            EditorGUILayout.LabelField(CommandGroupName(cmd), EditorStyles.label, GUILayout.Width(CommandGroupColumnWidth));
             EditorGUILayout.LabelField(cmd.Description ?? "");
 
             EditorGUILayout.EndHorizontal();
@@ -816,10 +985,7 @@ namespace AgentBridge
                 var parent = Directory.GetParent(Path.GetFullPath(Application.dataPath));
                 return parent != null && Directory.Exists(parent.FullName) ? parent.FullName : null;
             }
-            catch (System.Exception ex) when (ex is System.ArgumentException ||
-                                              ex is System.NotSupportedException ||
-                                              ex is System.UnauthorizedAccessException ||
-                                              ex is IOException)
+            catch (System.Exception ex) when (ex is System.ArgumentException || ex is System.NotSupportedException || ex is System.UnauthorizedAccessException || ex is IOException)
             {
                 return null;
             }
@@ -887,11 +1053,7 @@ namespace AgentBridge
             return path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         }
 
-        internal static GUIContent SortHeaderContent(
-            string label,
-            bool active,
-            bool ascending,
-            string tooltip)
+        internal static GUIContent SortHeaderContent(string label, bool active, bool ascending, string tooltip)
         {
             return new GUIContent(active ? $"{label}{(ascending ? " ▲" : " ▼")}" : label, tooltip);
         }

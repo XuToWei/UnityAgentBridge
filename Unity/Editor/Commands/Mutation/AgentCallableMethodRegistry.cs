@@ -39,8 +39,7 @@ namespace AgentBridge
             }
             methods.Sort(CompareMethods);
 
-            var candidates = new Dictionary<string, List<AgentCallableMethod>>(
-                StringComparer.Ordinal);
+            var candidates = new Dictionary<string, List<AgentCallableMethod>>(StringComparer.Ordinal);
             foreach (var method in methods)
             {
                 try
@@ -48,8 +47,7 @@ namespace AgentBridge
                     var attribute = method.GetCustomAttribute<AgentCallableAttribute>(false);
                     if (!TryCreate(method, attribute, out var descriptor, out var error))
                     {
-                        Debug.LogError(
-                            $"[AgentBridge] AgentCallable 方法 {Describe(method)} 无效,跳过:{error}");
+                        Debug.LogError($"[AgentBridge] AgentCallable 方法 {Describe(method)} 无效,跳过:{error}");
                         continue;
                     }
 
@@ -62,9 +60,7 @@ namespace AgentBridge
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogError(
-                        $"[AgentBridge] AgentCallable 方法 {Describe(method)} 注册失败,跳过:" +
-                        $"{ex.GetType().Name}:{ex.Message}");
+                    Debug.LogError($"[AgentBridge] AgentCallable 方法 {Describe(method)} 注册失败,跳过:{ex.GetType().Name}:{ex.Message}");
                 }
             }
 
@@ -74,9 +70,7 @@ namespace AgentBridge
                 if (pair.Value.Count != 1)
                 {
                     var conflicts = string.Join(", ", pair.Value.Select(item => Describe(item.Method)));
-                    Debug.LogError(
-                        $"[AgentBridge] AgentCallable 方法 ID '{pair.Key}' 重复," +
-                        $"冲突方法均不注册:{conflicts}");
+                    Debug.LogError($"[AgentBridge] AgentCallable 方法 ID '{pair.Key}' 重复,冲突方法均不注册:{conflicts}");
                     continue;
                 }
                 byId.Add(pair.Key, pair.Value[0]);
@@ -86,11 +80,7 @@ namespace AgentBridge
             s_Snapshot = new Snapshot(byId, ordered);
         }
 
-        internal static bool TryCreate(
-            MethodInfo method,
-            AgentCallableAttribute attribute,
-            out AgentCallableMethod descriptor,
-            out string error)
+        internal static bool TryCreate(MethodInfo method, AgentCallableAttribute attribute, out AgentCallableMethod descriptor, out string error)
         {
             descriptor = null;
             if (method == null)
@@ -113,9 +103,7 @@ namespace AgentBridge
                 error = "不支持泛型方法";
                 return false;
             }
-            if (method.DeclaringType == null ||
-                string.IsNullOrEmpty(method.DeclaringType.FullName) ||
-                method.DeclaringType.ContainsGenericParameters)
+            if (method.DeclaringType == null || string.IsNullOrEmpty(method.DeclaringType.FullName) || method.DeclaringType.ContainsGenericParameters)
             {
                 error = "声明类型必须具有稳定 FullName 且不能是开放泛型";
                 return false;
@@ -130,8 +118,7 @@ namespace AgentBridge
                 error = "方法不能包含参数";
                 return false;
             }
-            if (method.ReturnType == typeof(void) &&
-                method.GetCustomAttribute<AsyncStateMachineAttribute>(false) != null)
+            if (method.ReturnType == typeof(void) && method.GetCustomAttribute<AsyncStateMachineAttribute>(false) != null)
             {
                 error = "不支持 async void,请改为 async Task";
                 return false;
@@ -148,8 +135,7 @@ namespace AgentBridge
                 error = $"函数说明最长 {MaxDescriptionLength} 个字符";
                 return false;
             }
-            if (attribute.TimeoutSeconds < 1 ||
-                attribute.TimeoutSeconds > MaxTimeoutSeconds)
+            if (attribute.TimeoutSeconds < 1 || attribute.TimeoutSeconds > MaxTimeoutSeconds)
             {
                 error = $"TimeoutSeconds 必须在 1..{MaxTimeoutSeconds}";
                 return false;
@@ -162,19 +148,14 @@ namespace AgentBridge
                 return false;
             }
 
-            descriptor = new AgentCallableMethod(
-                id,
-                description,
-                attribute.TimeoutSeconds,
-                method);
+            descriptor = new AgentCallableMethod(id, description, attribute.TimeoutSeconds, method);
             error = null;
             return true;
         }
 
         internal static string CreateId(MethodInfo method)
         {
-            if (method?.DeclaringType == null ||
-                string.IsNullOrEmpty(method.DeclaringType.FullName))
+            if (method?.DeclaringType == null || string.IsNullOrEmpty(method.DeclaringType.FullName))
             {
                 throw new ArgumentException("method 必须具有带 FullName 的声明类型", nameof(method));
             }
@@ -207,9 +188,7 @@ namespace AgentBridge
         {
             private readonly Dictionary<string, AgentCallableMethod> m_ById;
 
-            internal Snapshot(
-                Dictionary<string, AgentCallableMethod> byId,
-                AgentCallableMethod[] methods)
+            internal Snapshot(Dictionary<string, AgentCallableMethod> byId, AgentCallableMethod[] methods)
             {
                 m_ById = byId;
                 Methods = Array.AsReadOnly(methods);
@@ -226,11 +205,7 @@ namespace AgentBridge
 
     internal sealed class AgentCallableMethod
     {
-        internal AgentCallableMethod(
-            string id,
-            string description,
-            int timeoutSeconds,
-            MethodInfo method)
+        internal AgentCallableMethod(string id, string description, int timeoutSeconds, MethodInfo method)
         {
             Id = id;
             Description = description;
@@ -283,15 +258,8 @@ namespace AgentBridge
                 return false;
             }
 
-            var getAwaiter = type.GetMethod(
-                "GetAwaiter",
-                BindingFlags.Public | BindingFlags.Instance,
-                null,
-                Type.EmptyTypes,
-                null);
-            return getAwaiter != null &&
-                   !getAwaiter.IsGenericMethod &&
-                   getAwaiter.ReturnType != typeof(void);
+            var getAwaiter = type.GetMethod("GetAwaiter", BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null);
+            return getAwaiter != null && !getAwaiter.IsGenericMethod && getAwaiter.ReturnType != typeof(void);
         }
 
         private static async Task AwaitDynamic(object value)
@@ -307,9 +275,7 @@ namespace AgentBridge
             }
 
             Debug.LogException(exception);
-            return new CommandException(
-                AgentCallableErrorCodes.MethodExecutionFailed,
-                $"{Id}: {exception.GetType().Name}: {exception.Message}");
+            return new CommandException(AgentCallableErrorCodes.MethodExecutionFailed, $"{Id}: {exception.GetType().Name}: {exception.Message}");
         }
     }
 

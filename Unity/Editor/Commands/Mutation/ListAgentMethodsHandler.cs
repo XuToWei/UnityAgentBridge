@@ -17,15 +17,7 @@ namespace AgentBridge
 
         public Task<object> ExecuteAsync(JObject @params)
         {
-            return Task.FromResult<object>(new
-            {
-                methods = AgentCallableMethodRegistry.GetAll().Select(method => new
-                {
-                    id = method.Id,
-                    description = method.Description,
-                    timeoutSeconds = method.TimeoutSeconds
-                }).ToArray()
-            });
+            return Task.FromResult<object>(new { methods = AgentCallableMethodRegistry.GetAll().Select(method => new { id = method.Id, description = method.Description, timeoutSeconds = method.TimeoutSeconds }).ToArray() });
         }
 
         public JObject ParamsSchema { get; } = new JObject();

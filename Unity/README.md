@@ -18,6 +18,8 @@ https://github.com/XuToWei/UnityAgentBridge.git?path=Unity
 
 首次安装后,打开 `Window/Agent Bridge` 并点击**启用桥接**；此时才会创建 `.agentbridge` 并启动宿主。启用状态会按工程持久化：Domain Reload 仅在此前已启用且 Bridge root 仍存在时恢复宿主；手动停止后，后续 reload 会保持停止。顶部工具条也可停止桥接 / 切失焦不节流；Exchange 执行期间停止开关会禁用，终态响应发布后恢复。
 
+窗口的 `AgentCallable` 页签显示有效方法的完整 ID、描述和建议超时，支持按 ID/描述搜索并通过**执行**按钮直接调用。页签会显示执行中、成功或带错误码的失败信息，并阻止多个方法并发执行。
+
 默认文件根目录:`<UnityProject>/.agentbridge/`。协议直接使用固定槽位 `request.json`、`processing.json`、`response.json`；这些文件只在 exchange 对应阶段存在。
 
 ## 驱动协议(面向 AI Agent)

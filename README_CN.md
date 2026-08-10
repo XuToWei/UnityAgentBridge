@@ -108,6 +108,8 @@ Profiler 工作流分为四步：`capture_profiler` 自动录制实际帧并保�
 
 `Window ▸ Agent Bridge` 用 Unity `TypeCache` 列出所有命令(内置 + 扩展),按**功能分组**(`ICommandHandler.Group`),表头点击排序、分组筛选、批量启停;顶部工具条启停桥接主机、切换后台运行。Exchange 执行期间不能停止桥接；终态响应发布后，停止开关会重新可用。任意命令可打勾启停——被禁用的命令**从 `list_commands` 隐藏**、分发时返回 `COMMAND_DISABLED`(禁用名单存 `EditorPrefs`,按工程命名空间隔离)。每个 handler 通过 `CanDisable` 自行声明策略；协议必需的 `ping` 与 `list_commands` 返回 `false`。
 
+窗口的 `AgentCallable` 页签会列出每个有效方法的完整 ID、描述和建议超时。可以搜索 ID 或描述，并用每项的**执行**按钮直接调用；窗口会显示执行中、成功或包含错误码的失败信息，执行期间不会并发启动另一个方法。
+
 ## 扩展 Bridge
 
 选择能够满足操作需求的最小扩展接口：无参操作使用 `AgentCallable`，需要完整命令契约时实现 `ICommandHandler`。

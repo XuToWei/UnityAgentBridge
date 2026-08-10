@@ -19,17 +19,11 @@ namespace AgentBridge
             var id = @params["method"].Value<string>();
             if (!AgentCallableMethodRegistry.TryGet(id, out var method))
             {
-                throw new CommandException(
-                    AgentCallableErrorCodes.MethodNotFound,
-                    $"AgentCallable 方法 '{id}' 不存在;请重新调用 list_agent_methods");
+                throw new CommandException(AgentCallableErrorCodes.MethodNotFound, $"AgentCallable 方法 '{id}' 不存在;请重新调用 list_agent_methods");
             }
 
             await method.InvokeAsync();
-            return new
-            {
-                method = id,
-                invoked = true
-            };
+            return new { method = id, invoked = true };
         }
 
         public JObject ParamsSchema { get; } = JObject.Parse(@"{
