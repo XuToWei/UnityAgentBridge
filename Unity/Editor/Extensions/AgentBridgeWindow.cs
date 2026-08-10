@@ -294,6 +294,18 @@ namespace AgentBridge
                     Rescan(true);
                 }
 
+                var bridgeDirectoryExists = Directory.Exists(BridgeSettings.RootDir);
+                using (new EditorGUI.DisabledScope(!bridgeDirectoryExists))
+                {
+                    var directoryButtonContent = bridgeDirectoryExists
+                        ? new GUIContent("打开目录", $"打开 Agent Bridge 的 .agentbridge 文件通讯目录\n完整路径: {BridgeSettings.RootDir}")
+                        : new GUIContent(".agentbridge 不存在", $"Agent Bridge 的 .agentbridge 文件通讯目录不存在\n完整路径: {BridgeSettings.RootDir}\n启用桥接后会自动创建该目录");
+                    if (GUILayout.Button(directoryButtonContent, EditorStyles.toolbarButton, GUILayout.Width(124)))
+                    {
+                        EditorUtility.RevealInFinder(BridgeSettings.RootDir);
+                    }
+                }
+
                 GUILayout.FlexibleSpace();
                 var status = running ? "运行中" : enabled ? "恢复中" : "已停止";
                 EditorGUILayout.LabelField(new GUIContent(status, $"根目录: {BridgeSettings.RootDir}\n轮询: {BridgeSettings.PollIntervalMs} ms"), running ? m_SuccessMiniLabelStyle : EditorStyles.miniLabel, GUILayout.Width(72));
