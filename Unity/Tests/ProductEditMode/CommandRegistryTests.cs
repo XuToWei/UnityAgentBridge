@@ -47,6 +47,75 @@ namespace AgentBridge.Tests.ProductEditMode
         }
 
         [Test]
+        public void MarkdownTargetCreation_CreatesAllowedEmptyFiles()
+        {
+            var directory = System.IO.Path.Combine(
+                System.IO.Path.GetTempPath(),
+                $"AgentBridgeMarkdownTarget-{Guid.NewGuid():N}");
+            System.IO.Directory.CreateDirectory(directory);
+            try
+            {
+                foreach (var fileName in new[] { "CLAUDE.md", "AGENTS.md" })
+                {
+                    Assert.That(AgentBridgeWindow.TryCreateEmptyMarkdownTarget(
+                        directory, fileName, out var fullPath, out var error), Is.True, error);
+                    Assert.That(fullPath, Is.EqualTo(System.IO.Path.Combine(directory, fileName)));
+                    Assert.That(System.IO.File.Exists(fullPath), Is.True);
+                    Assert.That(new System.IO.FileInfo(fullPath).Length, Is.Zero);
+                }
+            }
+            finally
+            {
+                System.IO.Directory.Delete(directory, true);
+            }
+        }
+
+        [Test]
+        public void MarkdownTargetCreation_DoesNotOverwriteExistingFile()
+        {
+            var directory = System.IO.Path.Combine(
+                System.IO.Path.GetTempPath(),
+                $"AgentBridgeMarkdownTarget-{Guid.NewGuid():N}");
+            System.IO.Directory.CreateDirectory(directory);
+            var target = System.IO.Path.Combine(directory, "CLAUDE.md");
+            System.IO.File.WriteAllText(target, "keep me");
+            try
+            {
+                Assert.That(AgentBridgeWindow.TryCreateEmptyMarkdownTarget(
+                    directory, "CLAUDE.md", out var fullPath, out var error), Is.False);
+                Assert.That(fullPath, Is.EqualTo(target));
+                Assert.That(error, Does.Contain("已存在"));
+                Assert.That(System.IO.File.ReadAllText(target), Is.EqualTo("keep me"));
+            }
+            finally
+            {
+                System.IO.Directory.Delete(directory, true);
+            }
+        }
+
+        [Test]
+        public void MarkdownTargetCreation_RejectsOtherFileNames()
+        {
+            var directory = System.IO.Path.Combine(
+                System.IO.Path.GetTempPath(),
+                $"AgentBridgeMarkdownTarget-{Guid.NewGuid():N}");
+            System.IO.Directory.CreateDirectory(directory);
+            try
+            {
+                Assert.That(AgentBridgeWindow.TryCreateEmptyMarkdownTarget(
+                    directory, "README.md", out var fullPath, out var error), Is.False);
+                Assert.That(fullPath, Is.Null);
+                Assert.That(error, Does.Contain("CLAUDE.md 或 AGENTS.md"));
+                Assert.That(System.IO.File.Exists(
+                    System.IO.Path.Combine(directory, "README.md")), Is.False);
+            }
+            finally
+            {
+                System.IO.Directory.Delete(directory, true);
+            }
+        }
+
+        [Test]
         public void PublicSchemaMutation_DoesNotChangeRegistrationSnapshot()
         {
             var originalVersion = CommandRegistry.Version;

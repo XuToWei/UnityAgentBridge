@@ -583,11 +583,25 @@ namespace AgentBridge
 
             EditorGUILayout.LabelField("把 AgentBridge 的 AI 使用指令写入 CLAUDE.md / AGENTS.md,让 AI 知道如何通过桥接调用 Unity。", EditorStyles.wordWrappedMiniLabel);
             EditorGUILayout.LabelField("只更新 AgentBridge 标记区,其余内容保留。", EditorStyles.wordWrappedMiniLabel);
-            if (targetOptions.Count == 0)
+            var hasClaude = targetOptions.Any(option => string.Equals(Path.GetFileName(option.RelativePath), "CLAUDE.md", System.StringComparison.OrdinalIgnoreCase));
+            var hasAgents = targetOptions.Any(option => string.Equals(Path.GetFileName(option.RelativePath), "AGENTS.md", System.StringComparison.OrdinalIgnoreCase));
+            if (!hasClaude || !hasAgents)
             {
-                EditorGUILayout.HelpBox("未找到 CLAUDE.md 或 AGENTS.md,写入不会生效。", MessageType.Warning);
+                EditorGUILayout.HelpBox("可以在 Unity 工程根目录创建缺少的 AI 指令文件，再选择是否写入 AgentBridge 指令。", MessageType.Info);
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    if (!hasClaude && GUILayout.Button("创建 CLAUDE.md"))
+                    {
+                        CreateEmptyMarkdownTarget("CLAUDE.md");
+                    }
+                    if (!hasAgents && GUILayout.Button("创建 AGENTS.md"))
+                    {
+                        CreateEmptyMarkdownTarget("AGENTS.md");
+                    }
+                }
             }
-            else
+
+            if (targetOptions.Count > 0)
             {
                 TryLoadClaudeTemplate(out var template, out _);
                 using (new EditorGUILayout.HorizontalScope())
@@ -789,6 +803,65 @@ namespace AgentBridge
         private static string CommandGroupName(RegisteredCommand command)
         {
             return string.IsNullOrEmpty(command.Group) ? "其它" : command.Group;
+        }
+
+        internal static bool TryCreateEmptyMarkdownTarget(string directory, string fileName, out string fullPath, out string error)
+        {
+            fullPath = null;
+            error = null;
+
+            if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
+            {
+                error = "目标目录不存在。";
+                return false;
+            }
+
+            if (!s_MarkdownTargetFileNames.Any(name =>
+                string.Equals(fileName, name, System.StringComparison.OrdinalIgnoreCase)))
+            {
+                error = "目标文件必须命名为 CLAUDE.md 或 AGENTS.md。";
+                return false;
+            }
+
+            try
+            {
+                fullPath = Path.Combine(directory, fileName);
+                using (File.Open(fullPath, FileMode.CreateNew, FileAccess.Write, FileShare.Read))
+                {
+                }
+                return true;
+            }
+            catch (IOException ex)
+            {
+                error = File.Exists(fullPath)
+                    ? $"目标文件已存在: {fileName}"
+                    : $"创建失败: {ex.Message}";
+                return false;
+            }
+            catch (System.UnauthorizedAccessException ex)
+            {
+                error = $"创建失败: {ex.Message}";
+                return false;
+            }
+            catch (System.Exception ex) when (ex is System.ArgumentException || ex is System.NotSupportedException || ex is PathTooLongException)
+            {
+                error = $"创建失败: {ex.Message}";
+                return false;
+            }
+        }
+
+        private void CreateEmptyMarkdownTarget(string fileName)
+        {
+            var projectRoot = GetUnityProjectRoot();
+            if (!TryCreateEmptyMarkdownTarget(projectRoot, fileName, out _, out var error))
+            {
+                SetMarkdownStatus(error, MessageType.Error);
+                return;
+            }
+
+            SetMarkdownStatus($"已在 Unity 工程根目录创建空文件: {fileName}", MessageType.Info);
+            AssetDatabase.Refresh();
+            Repaint();
         }
 
         private void WriteClaudeTemplate(string targetPath)
