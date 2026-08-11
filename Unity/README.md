@@ -40,7 +40,16 @@ Profiler 工作流包含 `capture_profiler`、`get_profiler_overview`、`get_pro
 
 ## 扩展(写新命令)
 
-只需暴露无参静态方法时，可使用轻量特性：
+只需暴露无参静态方法时，可使用轻量特性。
+
+`AgentCallable` 适用于以下场景：
+
+- **项目专用的一键操作**：例如重建导航数据、烘焙光照、生成项目资源或执行自定义发布准备流程。
+- **Agent 驱动的流程验证**：把 Arrange、Act 和 Assert 串成一次确定的场景级验证、集成检查或 smoke test。
+- **已有工具的轻量入口**：为现有 Editor 工具或 Runtime 逻辑提供无参静态包装，无需实现完整命令。
+- **无需返回数据的异步任务**：可返回 `Task`、`ValueTask`、`UniTask` 或其他 Awaitable，由 Bridge 等待完成并报告异常。
+
+调用需要参数、结构化返回值、Schema、Batch 或 Undo 策略时，应实现 `ICommandHandler`；需要参数矩阵、标准测试报告或长期 CI 回归时，应使用 Unity Test Framework。
 
 流程测试、场景级验证和 smoke test 是推荐用法：在用户要求编写测试代码时，Agent 可在目标工程
 已有的 Editor 程序集中生成自包含的 `AgentCallable` 方法，把 Arrange、Act、Assert 连成一个
