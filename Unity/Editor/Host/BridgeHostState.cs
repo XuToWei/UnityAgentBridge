@@ -11,12 +11,12 @@ namespace AgentBridge
     {
         private const string EnabledKeyPrefix = "AgentBridge.HostEnabled.";
 
-        internal static readonly string PreferenceKey = $"{EnabledKeyPrefix}{Application.dataPath}";
-
-        internal static bool HasExplicitState => EditorPrefs.HasKey(PreferenceKey);
+        internal static readonly string PreferenceKey =
+            $"{EnabledKeyPrefix}{Application.dataPath}";
 
         // 旧版本没有显式状态时默认启用；宿主仍会独立要求 Bridge root 已存在。
-        internal static bool IsEnabled => EditorPrefs.GetBool(PreferenceKey, true);
+        internal static bool IsEnabled =>
+            EditorPrefs.GetBool(PreferenceKey, true);
 
         internal static void SetEnabled(bool enabled)
         {

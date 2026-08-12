@@ -232,27 +232,26 @@ namespace AgentBridge
         {
             using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))
             {
-                var enabled = AgentBridgeHost.IsEnabled;
                 var running = AgentBridgeHost.IsRunning;
                 var processing = AgentBridgeHost.IsProcessing;
                 var oldBackgroundColor = GUI.backgroundColor;
                 var oldContentColor = GUI.contentColor;
-                if (enabled)
+                if (running)
                 {
                     GUI.backgroundColor = GetSuccessBackgroundColor();
                     GUI.contentColor = Color.white;
                 }
-                bool newEnabled;
+                bool newRunning;
                 using (new EditorGUI.DisabledScope(processing))
                 {
-                    var bridgeTooltip = processing ? "命令执行中，完成响应发布后才能停止桥接" : enabled && !running ? "正在等待包更新或程序集重载完成，点击可关闭自动恢复" : "启动或停止文件轮询主机";
-                    newEnabled = GUILayout.Toggle(enabled, new GUIContent("启用桥接", bridgeTooltip), EditorStyles.toolbarButton, GUILayout.Width(86));
+                    var bridgeTooltip = processing ? "命令执行中，完成响应发布后才能停止桥接" : "启动或停止文件轮询主机";
+                    newRunning = GUILayout.Toggle(running, new GUIContent("启用桥接", bridgeTooltip), EditorStyles.toolbarButton, GUILayout.Width(86));
                 }
                 GUI.backgroundColor = oldBackgroundColor;
                 GUI.contentColor = oldContentColor;
-                if (newEnabled != enabled)
+                if (newRunning != running)
                 {
-                    if (newEnabled)
+                    if (newRunning)
                     {
                         Directory.CreateDirectory(BridgeSettings.RootDir);
                         var gitIgnorePath = Path.Combine(BridgeSettings.RootDir, ".gitignore");
@@ -307,8 +306,7 @@ namespace AgentBridge
                 }
 
                 GUILayout.FlexibleSpace();
-                var status = running ? "运行中" : enabled ? "恢复中" : "已停止";
-                EditorGUILayout.LabelField(new GUIContent(status, $"根目录: {BridgeSettings.RootDir}\n轮询: {BridgeSettings.PollIntervalMs} ms"), running ? m_SuccessMiniLabelStyle : EditorStyles.miniLabel, GUILayout.Width(72));
+                EditorGUILayout.LabelField(new GUIContent(AgentBridgeHost.IsRunning ? "运行中" : "已停止", $"根目录: {BridgeSettings.RootDir}\n轮询: {BridgeSettings.PollIntervalMs} ms"), AgentBridgeHost.IsRunning ? m_SuccessMiniLabelStyle : EditorStyles.miniLabel, GUILayout.Width(72));
             }
         }
 
