@@ -66,6 +66,7 @@ agent <── .agentbridge/response.json <──rename── response.json.tmp
 - **Capture**——`capture_game_view`、`capture_scene_view`
 - **Console**——`search_logs`、`clear_logs`
 - **Compilation**——`recompile`、`get_compile_result`
+- **Scripting**——`execute_csharp`（不写工程脚本、不请求 reload 的动态 C# 执行）
 - **Profiling**——`get_profiler_overview`、`get_profiler_data`、`compare_profiler_windows`、`capture_profiler`
 - **Testing**——`run_tests`、`get_test_result`
 
@@ -75,7 +76,15 @@ Profiler 工作流分为四步：`capture_profiler` 自动录制实际帧并保�
 
 以上列表仅用于包能力概览。`list_commands` 仍是命令集的 canonical interface：它返回当前启用的命令、描述、参数 schema、batch policy 与 `commandsVersion`；Agent 提示词和集成代码不应复制这些 metadata。
 
-源码导航：`Channel/` 负责文件 exchange，`Dispatch/` 负责命令发现与调用，`Commands/` 负责 Unity 操作；AgentCallable 特性、目录和 Handler 位于 `Commands/Mutation/`。`Scene/` 负责可往返引用和序列化属性，`Testing/` 负责异步测试运行。
+### `execute_csharp`：无需 reload 的动态 C#
+
+`execute_csharp` 使用 Unity 自带 Roslyn 编译“方法体语句”或完整 `IAgentScript` 类，把 DLL 字节加载进 Editor，并在主线程执行。命令不会往 `Assets/` 写脚本、不会刷新 AssetDatabase、也不会请求 Unity 工程重编译。Roslyn 会在操作系统临时目录短暂写入源码、response file 和 DLL；加载后的动态程序集会驻留到下一次正常 domain reload 或 Editor 退出。
+
+body 模式提供 `AgentBridgeScriptContext context` 变量；class 模式要求恰好一个 public、非泛型、带 public 无参构造的 `IAgentScript` 实现。Context 返回有界日志和 JSON 结果，并让经它登记的场景对象参与 Undo、dirty 标记及可往返对象/组件引用。绕开 Context 直接调用 Unity API 的副作用无法自动追踪或保证回滚。
+
+默认源码 blocklist 会拦截明显的删除、进程/退出、字面量无限循环和文件系统模式，但它只是纵深防御，**不是沙箱**；可信本地调用可以显式关闭。任意进程内脚本没有安全的硬超时，恶意或错误代码可能卡死 Editor。若 snippet 需要看到上次 Unity 编译之后修改的项目代码，先用独立 Exchange 完成 `recompile` + `get_compile_result`。精确参数仍以运行时 `list_commands` 为准。
+
+源码导航：`Channel/` 负责文件 exchange，`Dispatch/` 负责命令发现与调用，`Commands/` 负责 Unity 操作；AgentCallable 特性、目录和 Handler 位于 `Commands/Mutation/`。`Scene/` 负责可往返引用和序列化属性，`Commands/Testing/` 负责异步测试运行。
 
 ## 安装
 

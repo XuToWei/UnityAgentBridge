@@ -67,6 +67,7 @@ The package currently includes these built-in commands, grouped by `ICommandHand
 - **Capture** — `capture_game_view`, `capture_scene_view`
 - **Console** — `search_logs`, `clear_logs`
 - **Compilation** — `recompile`, `get_compile_result`
+- **Scripting** — `execute_csharp` (dynamic C# execution without writing project scripts or requesting a reload)
 - **Profiling** — `get_profiler_overview`, `get_profiler_data`, `compare_profiler_windows`, `capture_profiler`
 - **Testing** — `run_tests`, `get_test_result`
 
@@ -76,7 +77,15 @@ The profiling workflow has four commands. `capture_profiler` records actual fram
 
 This list is a package overview. `list_commands` remains the canonical command interface: it returns the live enabled command set, descriptions, parameter schemas, batch policies, and `commandsVersion`; do not copy that metadata into an agent prompt or integration.
 
-Source map: `Channel/` owns the file exchange, `Dispatch/` owns command discovery and invocation, and `Commands/` owns Unity operations. The AgentCallable attribute, registry, and handlers live in `Commands/Mutation/`. `Scene/` owns round-trippable references and serialized properties, and `Testing/` owns asynchronous test runs.
+### `execute_csharp`: no-reload dynamic C#
+
+`execute_csharp` compiles either a statement body or a complete `IAgentScript` class with Unity's bundled Roslyn compiler, loads the resulting assembly from bytes, and invokes it on the Editor main thread. It never writes a script under `Assets/`, refreshes the AssetDatabase, or requests Unity project compilation. Roslyn does use a short-lived OS temporary directory for the source, response file, and DLL; loaded dynamic assemblies remain resident until the next normal domain reload or Editor exit.
+
+Body mode exposes an `AgentBridgeScriptContext context` variable. Class mode requires exactly one public, non-generic `IAgentScript` implementation with a public parameterless constructor. The context captures bounded logs and JSON return data, and its registration helpers integrate tracked scene objects with Undo, dirty-state handling, and round-trippable object/component references. Direct Unity API calls that bypass the context are not automatically tracked or rolled back.
+
+The default source blocklist catches obvious destructive/process/exit/infinite-loop and filesystem patterns, but it is defense in depth, **not a sandbox**; trusted local callers can explicitly disable it. Arbitrary in-process script execution has no safe hard timeout and can freeze the Editor. If the snippet must see project code edited since the last Unity compile, complete `recompile` + `get_compile_result` as separate Exchanges first. As always, discover the exact live schema through `list_commands`.
+
+Source map: `Channel/` owns the file exchange, `Dispatch/` owns command discovery and invocation, and `Commands/` owns Unity operations. The AgentCallable attribute, registry, and handlers live in `Commands/Mutation/`. `Scene/` owns round-trippable references and serialized properties, and `Commands/Testing/` owns asynchronous test runs.
 
 ## Install
 

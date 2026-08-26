@@ -757,6 +757,59 @@ Invoke-TestCase "compilation.get_compile_result" {
     return $exchange
 }
 
+Invoke-TestCase "scripting.execute_csharp.discovery" {
+    $info = $script:CommandMap["execute_csharp"]
+    Assert-True ($null -ne $info) "execute_csharp was not discovered"
+    Assert-Equal $info.batchAllowed $false "execute_csharp must not be batchable"
+    Assert-Equal $info.supportsUndoCollapse $false "execute_csharp must not advertise Undo collapse"
+    return $null
+}
+
+Invoke-TestCase "scripting.execute_csharp.invalid_code" {
+    $exchange = Invoke-BridgeRequest "execute_csharp" @{ code = "" } "execute-csharp-empty"
+    Assert-Error $exchange "INVALID_PARAMS"
+    return $exchange
+}
+
+Invoke-TestCase "scripting.execute_csharp.safety" {
+    $exchange = Invoke-BridgeRequest "execute_csharp" @{
+        code = 'System.IO.File.Delete("Assets/blocked.txt");'
+    } "execute-csharp-safety"
+    Assert-Error $exchange "SCRIPT_SAFETY_BLOCKED"
+    return $exchange
+}
+
+Invoke-TestCase "scripting.execute_csharp.compilation_error" {
+    $exchange = Invoke-BridgeRequest "execute_csharp" @{
+        code = "context.ReturnValue = ;"
+    } "execute-csharp-compile-error"
+    Assert-Ok $exchange
+    Assert-Equal $exchange.Response.result.executed $false "compile failure must report executed=false"
+    Assert-Equal $exchange.Response.result.code "SCRIPT_COMPILATION_FAILED" "compile failure code mismatch"
+    Assert-True (@($exchange.Response.result.diagnostics).Count -gt 0) "compile diagnostics missing"
+    return $exchange
+}
+
+Invoke-TestCase "scripting.execute_csharp.success" {
+    $code = 'System.Collections.Generic.List<string> values = new() { "a", "b" }; context.Log("count={0}", values.Count); context.ReturnValue = new JObject { ["value"] = values.Count switch { 2 => "two", _ => "other" } };'
+    $exchange = Invoke-BridgeRequest "execute_csharp" @{ code = $code } "execute-csharp-success"
+    Assert-Ok $exchange
+    Assert-Equal $exchange.Response.result.compiler "Roslyn" "execute_csharp compiler mismatch"
+    Assert-Equal $exchange.Response.result.returnValue.value "two" "execute_csharp return value mismatch"
+    Assert-Equal $exchange.Response.result.logs[0].message "count=2" "execute_csharp log mismatch"
+    return $exchange
+}
+
+Invoke-TestCase "scripting.execute_csharp.batch_rejected" {
+    $exchange = Invoke-BridgeRequest "batch" @{
+        steps = @(
+            @{ command = "execute_csharp"; params = @{ code = "context.ReturnValue = 1;" } }
+        )
+    } "execute-csharp-batch"
+    Assert-Error $exchange "BATCH_COMMAND_NOT_ALLOWED"
+    return $exchange
+}
+
 Invoke-TestCase "testing.run_tests.invalid_mode" {
     $exchange = Invoke-BridgeRequest "run_tests" @{ mode = "invalid" } "tests-invalid-mode"
     Assert-Error $exchange "INVALID_PARAMS"

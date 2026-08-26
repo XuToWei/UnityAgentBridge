@@ -70,6 +70,13 @@ Agent 应先理解目标工程的 API 与程序集边界，再在现有 Editor-o
 需要参数矩阵、多个独立用例、标准测试报告或长期 CI 回归时，使用 Unity Test Framework 和
 `run_tests`。需要结构化输入或结果时，实现 `ICommandHandler`。
 
+### 2.3 动态执行 C#
+
+需要把多步 Unity Editor 操作合并为一次调用、又不想创建工程脚本并触发 domain reload 时，使用运行时发现到的 `execute_csharp`。它支持 body/class 两种模式：body 中使用 `AgentBridgeScriptContext context`；class 模式实现公开的 `IAgentScript`。按 `list_commands` 返回的 schema 传参，不要复制或猜测字段。
+
+该命令不会刷新、保存或请求项目重编译，只能引用当前 AppDomain 已加载的程序集。外部刚改过项目脚本时，先用独立 Exchange 执行 `recompile`，等待 `get_compile_result.compiling=false` 且无错误，再发全新的 `execute_csharp` Exchange。不要把刷新/重编译代码塞进同一个 snippet；domain reload 会使当前 Exchange 变成 `INTERRUPTED`，且副作用未知。
+
+Context 的日志、返回值和变更列表有界；只有通过它登记的对象才自动参与 Undo/dirty/追踪。安全检查只是明显危险源码的 blocklist，不是沙箱；即使关闭检查，任意脚本仍无可靠取消机制，可能冻结 Editor、产生外部副作用或自行触发 reload。动态程序集会保留到正常 domain reload/Editor 退出。
 ## 3. 完成一次 exchange
 
 1. 从缓存读取 command 的 `paramsSchema` 并构造 object 类型的 `params`。

@@ -2,7 +2,7 @@
 
 让 AI Agent 通过**文件**驱动 Unity 编辑器执行命令。请求/响应 JSON 文件 + `EditorApplication.update` 轮询 + 可扩展的 `ICommandHandler` 框架。
 
-包内已包含协议/文件通道、命令发现与管理器，以及 scenes、inspection、mutation、prefab、assets、PlayMode、capture、console、compilation、profiling、testing 等内置命令。驱动桥接见 [`AGENT.md`](AGENT.md)；实际可用命令始终以运行时 `list_commands` 为准。
+包内已包含协议/文件通道、命令发现与管理器，以及 scenes、inspection、mutation、prefab、assets、PlayMode、capture、console、compilation、scripting、profiling、testing 等内置命令。驱动桥接见 [`AGENT.md`](AGENT.md)；实际可用命令始终以运行时 `list_commands` 为准。
 
 ## 安装
 
@@ -37,6 +37,12 @@ Profiler 工作流包含 `capture_profiler`、`get_profiler_overview`、`get_pro
 截图命令使用可配置 `quality`（默认 85）的 JPG 编码，并在开始捕获前清理 `.agentbridge/screenshots/` 中的旧截图和截图临时文件；连续截图只在整批开始时清理一次。
 
 场景命令返回的 ObjectRef / ComponentRef 应原样回传；新 ComponentRef 的 `exactType=true` 表示索引按精确 runtime type 计算。`set_game_view_resolution` 会返回 `restore` 令牌，临时截图或验证完成后应把令牌原样回传以恢复 Game View 并删除本次新增的自定义尺寸。
+
+## 动态 C#：`execute_csharp`
+
+`execute_csharp` 使用 Unity 自带 Roslyn 在 OS 临时目录编译代码，再从字节加载程序集并于 Editor 主线程执行；它不在 `Assets/` 写脚本、不刷新资产、也不请求项目重编译，因此命令自身不会触发 domain reload。body 模式直接编写语句并使用 `AgentBridgeScriptContext context`；class 模式实现公开的 `IAgentScript`。Context 可返回有界 JSON、记录日志，并为经它登记的场景对象接入 Undo/dirty/变更追踪。
+
+精确 schema 由 `list_commands` 提供。安全检查是可关闭的防御性源码 blocklist，不是沙箱；绕开 Context 的副作用不保证 Undo，任意脚本也没有可靠硬超时。Roslyn 会短暂落盘到系统临时目录，动态程序集直到正常 domain reload 或 Editor 退出才释放。需要最新项目脚本时，先用单独 Exchange 完成 `recompile` / `get_compile_result`。
 
 ## 扩展(写新命令)
 
