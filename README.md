@@ -1,3 +1,5 @@
+
+
 # Unity Agent Bridge
 
 > Let an AI agent drive the Unity Editor over plain JSON files — request/response, polling host, extensible command framework.
@@ -60,7 +62,7 @@ The package currently includes these built-in commands, grouped by `ICommandHand
 - **Meta** — `ping`, `list_commands`, `list_agent_methods`
 - **Inspection** — `get_hierarchy`, `get_object`, `get_selection`, `get_asset`, `get_asset_dependencies`, `list_assets`
 - **Scenes** — `list_scenes`, `open_scene`, `save_scene`, `close_scene`, `set_active_scene`
-- **Mutation** — `create_object`, `update_object`, `delete_object`, `add_component`, `remove_component`, `set_property`, `set_selection`, `frame_object`, `set_game_view_resolution`, `invoke_menu`, `invoke_agent_method`, `undo`, `redo`, `batch`
+- **Mutation** — `create_object`, `update_object`, `delete_object`, `add_component`, `remove_component`, `set_property`, `set_selection`, `frame_object`, `set_game_view_resolution`, `invoke_menu`, `invoke_agent_method`, `undo`, `redo`, `batch` (up to 50 prevalidated child commands)
 - **Prefab** — `prefab`
 - **Assets** — `create_asset`, `import_asset`, `move_asset`, `delete_asset`, `set_importer_property`, `refresh`
 - **PlayMode** — `play_scene`, `pause`, `resume`, `step`
