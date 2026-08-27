@@ -19,7 +19,7 @@ namespace AgentBridge
     {
         internal const int MaxSourceBytes = 128 * 1024;
         internal const int MaxReturnValueBytes = 64 * 1024;
-        internal const int MaxLoadedAssemblies = 128;
+        internal const int MaxLoadedAssemblies = 1024;
 
         private static int s_LoadedAssemblyCount;
 
