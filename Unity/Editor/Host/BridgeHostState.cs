@@ -1,3 +1,4 @@
+using System.IO;
 using UnityEditor;
 using UnityEngine;
 
@@ -11,12 +12,12 @@ namespace AgentBridge
     {
         private const string EnabledKeyPrefix = "AgentBridge.HostEnabled.";
 
-        internal static readonly string PreferenceKey =
-            $"{EnabledKeyPrefix}{Application.dataPath}";
+        internal static readonly string PreferenceKey = $"{EnabledKeyPrefix}{Application.dataPath}";
 
-        // 旧版本没有显式状态时默认启用；宿主仍会独立要求 Bridge root 已存在。
-        internal static bool IsEnabled =>
-            EditorPrefs.GetBool(PreferenceKey, true);
+        // 旧版本没有显式状态时,已有 Bridge root 视为已启用;没有 root 则保持关闭。
+        internal static bool IsEnabled => EditorPrefs.HasKey(PreferenceKey)
+            ? EditorPrefs.GetBool(PreferenceKey, false)
+            : Directory.Exists(BridgeSettings.RootDir);
 
         internal static void SetEnabled(bool enabled)
         {
