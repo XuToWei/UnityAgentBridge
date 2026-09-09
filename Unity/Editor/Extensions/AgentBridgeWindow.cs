@@ -65,6 +65,26 @@ namespace AgentBridge
         private IReadOnlyList<RegisteredCommand> m_Commands = new RegisteredCommand[0];
         private IReadOnlyList<AgentCallableMethod> m_AgentMethods = new AgentCallableMethod[0];
         private readonly Dictionary<System.Type, MonoScript> m_ScriptsByType = new Dictionary<System.Type, MonoScript>();
+        private readonly List<AgentCallableMethod> m_ShownAgentMethods = new List<AgentCallableMethod>();
+        private IReadOnlyList<AgentCallableMethod> m_CachedAgentMethodSnapshot;
+        private string m_CachedAgentMethodFilter;
+        private bool m_AgentMethodViewCacheValid;
+        private readonly List<RegisteredCommand> m_VisibleCommands = new List<RegisteredCommand>();
+        private readonly List<RegisteredCommand> m_ShownCommands = new List<RegisteredCommand>();
+        private readonly List<string> m_VisibleCommandNames = new List<string>();
+        private readonly List<string> m_CommandGroupKeys = new List<string>();
+        private readonly Dictionary<string, List<RegisteredCommand>> m_CommandGroupCommands = new Dictionary<string, List<RegisteredCommand>>(System.StringComparer.Ordinal);
+        private string[] m_CommandGroupOptions = { "全部" };
+        private int m_VisibleEnabledCount;
+        private IReadOnlyList<RegisteredCommand> m_CachedCommandSnapshot;
+        private string m_CachedCommandFilter;
+        private string m_CachedSelectedGroup;
+        private string m_CachedRegistryVersion;
+        private CommandSortColumn m_CachedSortColumn;
+        private bool m_CachedEnabledSortAscending;
+        private bool m_CachedNameSortAscending;
+        private bool m_CachedGroupSortAscending;
+        private bool m_CommandViewCacheValid;
         private string m_NameFilter = "";
         private string m_AgentMethodFilter = "";
         private string m_SelectedGroup;   // null = 全部(单选)
@@ -111,19 +131,42 @@ namespace AgentBridge
             minSize = new Vector2(660f, 380f); // 保证工具条、分组与表头都有足够空间
             m_CommandsLoaded = false;
             m_AgentMethodsLoaded = false;
+            m_CommandViewCacheValid = false;
+            m_AgentMethodViewCacheValid = false;
+            EditorApplication.projectChanged += OnProjectChanged;
         }
 
-        private void Rescan(bool rebuildRegistry = false)
+        private void OnDisable()
+        {
+            EditorApplication.projectChanged -= OnProjectChanged;
+        }
+
+        private void OnProjectChanged()
         {
             m_ScriptsByType.Clear();
-            if (rebuildRegistry)
-            {
-                CommandRegistry.Rebuild();
-                AgentCallableMethodRegistry.Rebuild();
-            }
+            Repaint();
+        }
+
+        private void RefreshAll()
+        {
+            m_ScriptsByType.Clear();
+            CommandRegistry.Rebuild();
+            AgentCallableMethodRegistry.Rebuild();
+            LoadCommands();
+            LoadAgentMethods();
+        }
+
+        private void LoadCommands()
+        {
             m_Commands = CommandRegistry.GetRegistrations();
-            m_AgentMethods = AgentCallableMethodRegistry.GetAll();
+            m_CommandViewCacheValid = false;
             m_CommandsLoaded = true;
+        }
+
+        private void LoadAgentMethods()
+        {
+            m_AgentMethods = AgentCallableMethodRegistry.GetAll();
+            m_AgentMethodViewCacheValid = false;
             m_AgentMethodsLoaded = true;
         }
 
@@ -207,7 +250,8 @@ namespace AgentBridge
         {
             if (!m_CommandsLoaded)
             {
-                Rescan();
+                // 命令页不应为显示命令而触发 AgentCallable 的 TypeCache 扫描。
+                LoadCommands();
             }
         }
 
@@ -215,7 +259,7 @@ namespace AgentBridge
         {
             if (!m_AgentMethodsLoaded)
             {
-                Rescan();
+                LoadAgentMethods();
             }
         }
 
@@ -290,7 +334,7 @@ namespace AgentBridge
 
                 if (GUILayout.Button(IconText("Refresh", "刷新"), EditorStyles.toolbarButton, GUILayout.Width(54)))
                 {
-                    Rescan(true);
+                    RefreshAll();
                 }
 
                 var bridgeDirectoryExists = Directory.Exists(BridgeSettings.RootDir);
@@ -312,12 +356,10 @@ namespace AgentBridge
 
         private void DrawCommandSection()
         {
-            var groups = GroupByTag(Filtered());
-            var visibleCommands = VisibleCommands(groups);
-            DrawCommandToolbar(groups, visibleCommands);
+            EnsureCommandViewCache();
+            DrawCommandToolbar();
 
-            var shown = SortCommands(visibleCommands).ToList();
-            if (shown.Count == 0)
+            if (m_ShownCommands.Count == 0)
             {
                 EditorGUILayout.Space(8);
                 EditorGUILayout.LabelField(m_Commands.Count == 0 ? "(无命令)" : "(无匹配命令)", EditorStyles.centeredGreyMiniLabel);
@@ -326,9 +368,9 @@ namespace AgentBridge
 
             DrawListHeader();
             m_Scroll = EditorGUILayout.BeginScrollView(m_Scroll);
-            for (int i = 0; i < shown.Count; i++)
+            for (int i = 0; i < m_ShownCommands.Count; i++)
             {
-                DrawCommandRow(shown[i], i);
+                DrawCommandRow(m_ShownCommands[i], i);
             }
             EditorGUILayout.EndScrollView();
         }
@@ -359,17 +401,48 @@ namespace AgentBridge
 
         private List<AgentCallableMethod> DrawAgentMethodToolbar()
         {
-            List<AgentCallableMethod> shown;
             using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))
             {
                 GUILayout.Label("搜索", GUILayout.Width(32));
                 m_AgentMethodFilter = EditorGUILayout.TextField(m_AgentMethodFilter, EditorStyles.toolbarSearchField, GUILayout.MinWidth(180));
 
-                shown = FilterAgentMethods(m_AgentMethods, m_AgentMethodFilter);
+                EnsureAgentMethodViewCache();
                 GUILayout.FlexibleSpace();
-                EditorGUILayout.LabelField($"显示 {shown.Count} / {m_AgentMethods.Count}", EditorStyles.miniLabel, GUILayout.Width(96));
+                EditorGUILayout.LabelField($"显示 {m_ShownAgentMethods.Count} / {m_AgentMethods.Count}", EditorStyles.miniLabel, GUILayout.Width(96));
             }
-            return shown;
+            return m_ShownAgentMethods;
+        }
+
+        private void EnsureAgentMethodViewCache()
+        {
+            if (m_AgentMethodViewCacheValid &&
+                ReferenceEquals(m_CachedAgentMethodSnapshot, m_AgentMethods) &&
+                string.Equals(m_CachedAgentMethodFilter, m_AgentMethodFilter, System.StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            m_ShownAgentMethods.Clear();
+            var filter = string.IsNullOrWhiteSpace(m_AgentMethodFilter) ? null : m_AgentMethodFilter.Trim();
+            for (var index = 0; index < m_AgentMethods.Count; index++)
+            {
+                var method = m_AgentMethods[index];
+                if (filter == null ||
+                    ContainsIgnoreCase(method.Id, filter) ||
+                    ContainsIgnoreCase(method.Description, filter))
+                {
+                    m_ShownAgentMethods.Add(method);
+                }
+            }
+            m_ShownAgentMethods.Sort(CompareAgentMethods);
+            m_CachedAgentMethodSnapshot = m_AgentMethods;
+            m_CachedAgentMethodFilter = m_AgentMethodFilter;
+            m_AgentMethodViewCacheValid = true;
+        }
+
+        private static int CompareAgentMethods(AgentCallableMethod left, AgentCallableMethod right)
+        {
+            return System.StringComparer.Ordinal.Compare(left.Id, right.Id);
         }
 
         private void DrawAgentMethodCard(AgentCallableMethod method)
@@ -380,8 +453,8 @@ namespace AgentBridge
                 using (new EditorGUILayout.HorizontalScope())
                 {
                     GUILayout.Label("ID", m_AgentMethodLabelStyle, GUILayout.Width(AgentMethodLabelColumnWidth), GUILayout.Height(lineHeight));
-                    var script = GetScript(method?.Method?.DeclaringType);
-                    if (script == null)
+                    var methodScriptResolved = TryGetCachedScript(method?.Method?.DeclaringType, out var methodScript);
+                    if (methodScriptResolved && methodScript == null)
                     {
                         EditorGUILayout.LabelField(new GUIContent(method.Id, $"完整方法 ID: {method.Id}"), m_AgentMethodValueStyle, GUILayout.MinWidth(180), GUILayout.Height(lineHeight));
                     }
@@ -389,7 +462,7 @@ namespace AgentBridge
                     {
                         if (GUILayout.Button(new GUIContent(method.Id, $"点击定位代码文件\n完整方法 ID: {method.Id}"), m_AgentMethodIdLinkStyle, GUILayout.MinWidth(180), GUILayout.ExpandWidth(true), GUILayout.Height(lineHeight)))
                         {
-                            PingScript(script);
+                            PingScriptForType(method?.Method?.DeclaringType);
                         }
                         EditorGUIUtility.AddCursorRect(GUILayoutUtility.GetLastRect(), MouseCursor.Link);
                     }
@@ -418,16 +491,42 @@ namespace AgentBridge
 
         private MonoScript GetScript(System.Type type)
         {
-            while (type?.DeclaringType != null) type = type.DeclaringType;
+            type = NormalizeScriptType(type);
             if (type == null) return null;
             if (m_ScriptsByType.TryGetValue(type, out var script)) return script;
             return m_ScriptsByType[type] = FindScript(type);
+        }
+
+        private bool TryGetCachedScript(System.Type type, out MonoScript script)
+        {
+            type = NormalizeScriptType(type);
+            if (type == null)
+            {
+                script = null;
+                return false;
+            }
+            return m_ScriptsByType.TryGetValue(type, out script);
+        }
+
+        private static System.Type NormalizeScriptType(System.Type type)
+        {
+            while (type?.DeclaringType != null) type = type.DeclaringType;
+            return type;
         }
 
         private static void PingScript(MonoScript script)
         {
             Selection.activeObject = script;
             EditorGUIUtility.PingObject(script);
+        }
+
+        private void PingScriptForType(System.Type type)
+        {
+            var script = GetScript(type);
+            if (script != null)
+            {
+                PingScript(script);
+            }
         }
 
         private static MonoScript FindScript(System.Type type)
@@ -524,7 +623,7 @@ namespace AgentBridge
             return text;
         }
 
-        private void DrawCommandToolbar(List<CommandGroup> groups, List<RegisteredCommand> visibleCommands)
+        private void DrawCommandToolbar()
         {
             using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))
             {
@@ -533,31 +632,26 @@ namespace AgentBridge
 
                 GUILayout.Space(8);
                 GUILayout.Label("分组", GUILayout.Width(32));
-                var keys = new List<string> { "全部" };
-                keys.AddRange(groups.Select(g => g.Key));
-                var arr = keys.ToArray();
-                var cur = string.IsNullOrEmpty(m_SelectedGroup) ? 0 : System.Array.IndexOf(arr, m_SelectedGroup);
+                var cur = string.IsNullOrEmpty(m_SelectedGroup) ? 0 : System.Array.IndexOf(m_CommandGroupOptions, m_SelectedGroup);
                 if (cur < 0)
                 {
                     cur = 0;
                 }
-                var picked = EditorGUILayout.Popup(cur, arr, EditorStyles.toolbarPopup, GUILayout.Width(120));
-                m_SelectedGroup = picked == 0 ? null : arr[picked];
+                var picked = EditorGUILayout.Popup(cur, m_CommandGroupOptions, EditorStyles.toolbarPopup, GUILayout.Width(120));
+                m_SelectedGroup = picked == 0 ? null : m_CommandGroupOptions[picked];
 
                 GUILayout.Space(8);
                 if (GUILayout.Button("全部启用", EditorStyles.toolbarButton, GUILayout.Width(72)))
                 {
-                    SetAll(groups, true);
+                    SetAll(true);
                 }
                 if (GUILayout.Button("全部禁用", EditorStyles.toolbarButton, GUILayout.Width(72)))
                 {
-                    SetAll(groups, false);
+                    SetAll(false);
                 }
 
                 GUILayout.FlexibleSpace();
-                var visibleCount = visibleCommands.Count;
-                var enabledCount = visibleCommands.Count(IsCommandEnabled);
-                EditorGUILayout.LabelField($"显示 {visibleCount} · 启用 {enabledCount}", EditorStyles.miniLabel, GUILayout.Width(130));
+                EditorGUILayout.LabelField($"显示 {m_VisibleCommands.Count} · 启用 {m_VisibleEnabledCount}", EditorStyles.miniLabel, GUILayout.Width(130));
             }
         }
 
@@ -651,63 +745,154 @@ namespace AgentBridge
             return upToDate;
         }
 
-        // 当前显示(经搜索 + 分组筛选)的命令,不含排序。供列表渲染与批量启停。
-        private List<RegisteredCommand> VisibleCommands(List<CommandGroup> groups)
-        {
-            return (string.IsNullOrEmpty(m_SelectedGroup) ? groups : groups.Where(g => g.Key == m_SelectedGroup)).SelectMany(g => g.Commands).ToList();
-        }
-
         // 批量启停当前显示的命令(不可禁用的命令由 CommandToggle 自动跳过)。
-        private void SetAll(List<CommandGroup> groups, bool enabled)
+        private void SetAll(bool enabled)
         {
-            CommandToggle.SetEnabledBulk(VisibleCommands(groups).Select(cmd => cmd.Command), enabled);
+            CommandToggle.SetEnabledBulk(m_VisibleCommandNames, enabled);
             GUIUtility.ExitGUI();
         }
 
-        private List<RegisteredCommand> Filtered()
+        private void EnsureCommandViewCache()
         {
-            IEnumerable<RegisteredCommand> q = m_Commands;
-            if (!string.IsNullOrEmpty(m_NameFilter))
+            var registryVersion = CommandRegistry.Version;
+            if (m_CommandViewCacheValid &&
+                ReferenceEquals(m_CachedCommandSnapshot, m_Commands) &&
+                string.Equals(m_CachedCommandFilter, m_NameFilter, System.StringComparison.Ordinal) &&
+                string.Equals(m_CachedSelectedGroup, m_SelectedGroup, System.StringComparison.Ordinal) &&
+                m_CachedRegistryVersion == registryVersion &&
+                m_CachedSortColumn == m_CommandSortColumn &&
+                m_CachedEnabledSortAscending == m_EnabledSortAscending &&
+                m_CachedNameSortAscending == m_NameSortAscending &&
+                m_CachedGroupSortAscending == m_GroupSortAscending)
             {
-                var f = m_NameFilter.ToLowerInvariant();
-                q = q.Where(c => (c.Command ?? "").ToLowerInvariant().Contains(f) || (c.Description ?? "").ToLowerInvariant().Contains(f));
+                return;
             }
-            return q.ToList();
+
+            m_VisibleCommands.Clear();
+            m_ShownCommands.Clear();
+            m_VisibleCommandNames.Clear();
+            m_CommandGroupCommands.Clear();
+            m_CommandGroupKeys.Clear();
+
+            var filter = m_NameFilter;
+            for (var index = 0; index < m_Commands.Count; index++)
+            {
+                var command = m_Commands[index];
+                if (!string.IsNullOrEmpty(filter) &&
+                    !ContainsIgnoreCase(command.Command, filter) &&
+                    !ContainsIgnoreCase(command.Description, filter))
+                {
+                    continue;
+                }
+
+                var groupName = CommandGroupName(command);
+                if (!m_CommandGroupCommands.TryGetValue(groupName, out var groupCommands))
+                {
+                    groupCommands = new List<RegisteredCommand>();
+                    m_CommandGroupCommands.Add(groupName, groupCommands);
+                    m_CommandGroupKeys.Add(groupName);
+                }
+                groupCommands.Add(command);
+            }
+
+            m_CommandGroupKeys.Sort(Comparer<string>.Default);
+            m_CommandGroupOptions = new string[m_CommandGroupKeys.Count + 1];
+            m_CommandGroupOptions[0] = "全部";
+            for (var index = 0; index < m_CommandGroupKeys.Count; index++)
+            {
+                var groupName = m_CommandGroupKeys[index];
+                var groupCommands = m_CommandGroupCommands[groupName];
+                groupCommands.Sort(CompareCommandName);
+                m_CommandGroupOptions[index + 1] = groupName;
+            }
+
+            if (string.IsNullOrEmpty(m_SelectedGroup))
+            {
+                for (var index = 0; index < m_CommandGroupKeys.Count; index++)
+                {
+                    m_VisibleCommands.AddRange(m_CommandGroupCommands[m_CommandGroupKeys[index]]);
+                }
+            }
+            else if (m_CommandGroupCommands.TryGetValue(m_SelectedGroup, out var selectedCommands))
+            {
+                m_VisibleCommands.AddRange(selectedCommands);
+            }
+
+            for (var index = 0; index < m_VisibleCommands.Count; index++)
+            {
+                m_VisibleCommandNames.Add(m_VisibleCommands[index].Command);
+            }
+
+            m_VisibleEnabledCount = 0;
+            for (var index = 0; index < m_VisibleCommands.Count; index++)
+            {
+                if (IsCommandEnabled(m_VisibleCommands[index]))
+                {
+                    m_VisibleEnabledCount++;
+                }
+            }
+
+            m_ShownCommands.AddRange(m_VisibleCommands);
+            SortCommandList(m_ShownCommands);
+
+            m_CachedCommandSnapshot = m_Commands;
+            m_CachedCommandFilter = m_NameFilter;
+            m_CachedSelectedGroup = m_SelectedGroup;
+            m_CachedRegistryVersion = registryVersion;
+            m_CachedSortColumn = m_CommandSortColumn;
+            m_CachedEnabledSortAscending = m_EnabledSortAscending;
+            m_CachedNameSortAscending = m_NameSortAscending;
+            m_CachedGroupSortAscending = m_GroupSortAscending;
+            m_CommandViewCacheValid = true;
         }
 
-        private struct CommandGroup
-        {
-            public string Key;
-            public List<RegisteredCommand> Commands;
-        }
-
-        // 排序:一次只按一个表头列排序,方向统一为升序/降序。
-        private IEnumerable<RegisteredCommand> SortCommands(IEnumerable<RegisteredCommand> cmds)
+        private void SortCommandList(List<RegisteredCommand> commands)
         {
             switch (m_CommandSortColumn)
             {
                 case CommandSortColumn.Enabled:
-                    return m_EnabledSortAscending ? cmds.OrderBy(IsCommandEnabled).ThenBy(c => c.Command) : cmds.OrderByDescending(IsCommandEnabled).ThenBy(c => c.Command);
+                    commands.Sort(CompareEnabledCommands);
+                    break;
                 case CommandSortColumn.Name:
-                    return m_NameSortAscending ? cmds.OrderBy(c => c.Command) : cmds.OrderByDescending(c => c.Command);
+                    commands.Sort(m_NameSortAscending ? CompareCommandName : CompareCommandNameDescending);
+                    break;
                 case CommandSortColumn.Group:
-                    return m_GroupSortAscending ? cmds.OrderBy(CommandGroupName).ThenBy(c => c.Command) : cmds.OrderByDescending(CommandGroupName).ThenBy(c => c.Command);
+                    commands.Sort(m_GroupSortAscending ? CompareCommandGroup : CompareCommandGroupDescending);
+                    break;
                 default:
-                    return cmds.OrderBy(c => c.Command);
+                    commands.Sort(CompareCommandName);
+                    break;
             }
         }
 
-        // 按 ICommandHandler.Group 功能分组(空则归"其它"),按收集到的分组名排列。
-        private static List<CommandGroup> GroupByTag(List<RegisteredCommand> rows)
+        private int CompareEnabledCommands(RegisteredCommand left, RegisteredCommand right)
         {
-            return rows.GroupBy(CommandGroupName)
-                .OrderBy(g => g.Key)
-                .Select(g => new CommandGroup
-                {
-                    Key = g.Key,
-                    Commands = g.OrderBy(c => c.Command).ToList()
-                })
-                .ToList();
+            var result = m_EnabledSortAscending
+                ? Comparer<bool>.Default.Compare(IsCommandEnabled(left), IsCommandEnabled(right))
+                : Comparer<bool>.Default.Compare(IsCommandEnabled(right), IsCommandEnabled(left));
+            return result != 0 ? result : CompareCommandName(left, right);
+        }
+
+        private static int CompareCommandName(RegisteredCommand left, RegisteredCommand right)
+        {
+            return Comparer<string>.Default.Compare(left.Command, right.Command);
+        }
+
+        private static int CompareCommandNameDescending(RegisteredCommand left, RegisteredCommand right)
+        {
+            return Comparer<string>.Default.Compare(right.Command, left.Command);
+        }
+
+        private static int CompareCommandGroup(RegisteredCommand left, RegisteredCommand right)
+        {
+            var result = Comparer<string>.Default.Compare(CommandGroupName(left), CommandGroupName(right));
+            return result != 0 ? result : CompareCommandName(left, right);
+        }
+
+        private static int CompareCommandGroupDescending(RegisteredCommand left, RegisteredCommand right)
+        {
+            var result = Comparer<string>.Default.Compare(CommandGroupName(right), CommandGroupName(left));
+            return result != 0 ? result : CompareCommandName(left, right);
         }
 
         // 命令列表表头兼排序控制(固定在滚动区上方,列宽与 DrawCommandRow 对齐)。
@@ -749,10 +934,12 @@ namespace AgentBridge
                 {
                     m_GroupSortAscending = !m_GroupSortAscending;
                 }
+                m_CommandViewCacheValid = false;
                 return;
             }
 
             m_CommandSortColumn = column;
+            m_CommandViewCacheValid = false;
         }
 
         private void DrawCommandRow(RegisteredCommand cmd, int index)
@@ -777,14 +964,17 @@ namespace AgentBridge
             }
             GUILayout.Space(CommandEnabledColumnWidth - 16f); // 补足"启用"列宽,使命令名与表头"命令"列对齐
             var nameTip = locked ? $"{cmd.Description}(必须命令,不可禁用)" : cmd.Description;
-            var script = GetScript(cmd.Handler?.GetType());
-            if (script == null)
+            var commandScriptResolved = TryGetCachedScript(cmd.Handler?.GetType(), out var commandScript);
+            if (commandScriptResolved && commandScript == null)
             {
                 EditorGUILayout.LabelField(new GUIContent(cmd.Command, nameTip), EditorStyles.label, GUILayout.Width(CommandNameColumnWidth));
             }
             else
             {
-                if (GUILayout.Button(new GUIContent(cmd.Command, $"点击定位代码文件\n{nameTip}"), m_CommandLinkStyle, GUILayout.Width(CommandNameColumnWidth))) PingScript(script);
+                if (GUILayout.Button(new GUIContent(cmd.Command, $"点击定位代码文件\n{nameTip}"), m_CommandLinkStyle, GUILayout.Width(CommandNameColumnWidth)))
+                {
+                    PingScriptForType(cmd.Handler?.GetType());
+                }
                 EditorGUIUtility.AddCursorRect(GUILayoutUtility.GetLastRect(), MouseCursor.Link);
             }
             EditorGUILayout.LabelField(CommandGroupName(cmd), EditorStyles.label, GUILayout.Width(CommandGroupColumnWidth));
