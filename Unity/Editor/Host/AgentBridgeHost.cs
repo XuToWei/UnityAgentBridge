@@ -140,6 +140,14 @@ namespace AgentBridge
 
         private static void RestoreIfEnabled()
         {
+            // 先节流,避免等待恢复期间每帧读取偏好设置和检查目录。
+            var now = EditorApplication.timeSinceStartup;
+            if (now < s_NextRestoreTime)
+            {
+                return;
+            }
+            s_NextRestoreTime = now + RestoreIntervalSeconds;
+
             if (!BridgeHostState.IsEnabled || IsRunning)
             {
                 CancelRestore();
@@ -154,12 +162,6 @@ namespace AgentBridge
                 return;
             }
 
-            var now = EditorApplication.timeSinceStartup;
-            if (now < s_NextRestoreTime)
-            {
-                return;
-            }
-            s_NextRestoreTime = now + RestoreIntervalSeconds;
             if (!FileChannel.TryOpenExisting(BridgeSettings.RootDir, out var channel))
             {
                 EnterWaitingForRoot();
