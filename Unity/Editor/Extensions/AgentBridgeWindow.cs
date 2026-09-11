@@ -1390,7 +1390,7 @@ namespace AgentBridge
             return new GUIContent(active ? $"{label}{(ascending ? " ▲" : " ▼")}" : label, tooltip);
         }
 
-        private static bool TryUpsertManagedMarkdown(string current, string template, out string updated, out string error)
+        internal static bool TryUpsertManagedMarkdown(string current, string template, out string updated, out string error)
         {
             updated = null;
             error = null;
@@ -1403,8 +1403,8 @@ namespace AgentBridge
             if (startIndex < 0 && endIndex < 0)
             {
                 updated = string.IsNullOrWhiteSpace(current)
-                    ? block
-                    : $"{current}{(current.EndsWith("\n", System.StringComparison.Ordinal) ? "\n" : "\n\n")}{block}";
+                    ? $"{block}\n"
+                    : $"{current}{(current.EndsWith("\n", System.StringComparison.Ordinal) ? "\n" : "\n\n")}{block}\n";
                 return true;
             }
 
@@ -1455,7 +1455,8 @@ namespace AgentBridge
 
         private static string BuildManagedMarkdownBlock(string template)
         {
-            return $"{MarkdownBlockStart}\n{(template ?? "").Trim()}\n{MarkdownBlockEnd}\n";
+            // 尾部换行只在首次插入时补齐；更新时保留 END 标记后的原文。
+            return $"{MarkdownBlockStart}\n{(template ?? "").Trim()}\n{MarkdownBlockEnd}";
         }
 
         private bool TryLoadClaudeTemplate(out string template, out string error)
